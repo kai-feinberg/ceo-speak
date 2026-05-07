@@ -116,15 +116,16 @@ function ensureUi() {
         linear-gradient(135deg, rgb(255 255 255 / 94%), rgb(255 246 214 / 95%)),
         #fff;
       color: #171717;
-      padding: 7px;
+      padding: 10px;
       font: 12px/1.2 ui-sans-serif, system-ui, sans-serif;
       box-shadow: 0 18px 40px rgb(101 64 12 / 22%);
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      gap: 6px;
-      width: 350px;
+      gap: 9px;
+      width: 372px;
       max-width: calc(100vw - 36px);
+      min-height: 102px;
     }
     .ti-toolbar__row {
       display: flex;
@@ -135,88 +136,103 @@ function ensureUi() {
       display: flex;
       align-items: center;
       gap: 6px;
-      min-width: 112px;
+      min-width: 138px;
     }
     .ti-brand__mark {
       display: grid;
       place-items: center;
-      width: 22px;
-      height: 22px;
+      width: 30px;
+      height: 30px;
       border-radius: 6px;
       background: #111827;
-      color: #facc15;
-      font: 900 14px/1 ui-sans-serif, system-ui, sans-serif;
+      font: 900 16px/1 ui-sans-serif, system-ui, sans-serif;
     }
     .ti-brand__text {
       color: #171717;
-      font-weight: 800;
+      font: 900 14px/1 ui-sans-serif, system-ui, sans-serif;
       text-transform: uppercase;
       letter-spacing: 0;
     }
+    .ti-brand__cash {
+      color: #16a34a;
+      font: 900 11px/1 ui-sans-serif, system-ui, sans-serif;
+    }
     .ti-toolbar__status {
+      flex: 1;
       border: 1px solid rgb(17 24 39 / 10%);
       border-radius: 6px;
-      background: rgb(255 255 255 / 62%);
+      background: #ecfdf5;
       color: #7c2d12;
-      padding: 5px 7px;
-      font-weight: 800;
+      padding: 7px 8px;
+      font: 900 11px/1 ui-sans-serif, system-ui, sans-serif;
       text-align: center;
+      white-space: nowrap;
     }
     .ti-toolbar__status--active {
-      color: #b91c1c;
-      background: #fff1f2;
+      color: #166534;
+      background: #dcfce7;
+      box-shadow: inset 0 -2px 0 rgb(22 101 52 / 14%);
+    }
+    .ti-mode-row {
+      border: 1px solid rgb(124 45 18 / 14%);
+      border-radius: 8px;
+      background: rgb(255 255 255 / 56%);
+      padding: 7px;
+    }
+    .ti-mode-row__label {
+      color: #854d0e;
+      font: 900 10px/1 ui-sans-serif, system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      margin-bottom: 6px;
     }
     .ti-levels {
       display: flex;
-      gap: 3px;
-      flex: 1;
-      border: 1px solid rgb(124 45 18 / 16%);
-      border-radius: 7px;
-      padding: 2px;
-      background: rgb(255 255 255 / 58%);
+      gap: 5px;
     }
     .ti-level {
-      border: 0;
-      border-radius: 5px;
-      background: transparent;
+      border: 1px solid rgb(124 45 18 / 14%);
+      border-radius: 6px;
+      background: #fffaf0;
       color: #713f12;
-      padding: 5px 7px;
-      font: 700 12px/1 ui-sans-serif, system-ui, sans-serif;
+      padding: 9px 8px;
+      font: 900 12px/1 ui-sans-serif, system-ui, sans-serif;
       text-transform: capitalize;
       cursor: pointer;
       flex: 1;
     }
     .ti-level--active {
-      background: #e11d48;
-      color: #fff;
-      box-shadow: 0 8px 16px rgb(225 29 72 / 24%);
+      background: #16a34a;
+      border-color: #15803d;
+      color: #f0fdf4;
+      box-shadow: 0 8px 16px rgb(22 163 74 / 24%);
     }
     .ti-icon-button,
     .ti-close-button {
       border: 0;
       border-radius: 6px;
-      width: 28px;
-      height: 28px;
+      width: 30px;
+      height: 30px;
       background: #111827;
       color: #fff;
-      font: 900 14px/1 ui-sans-serif, system-ui, sans-serif;
+      font: 900 13px/1 ui-sans-serif, system-ui, sans-serif;
       cursor: pointer;
     }
     .ti-icon-button--active {
-      background: #e11d48;
+      background: #16a34a;
     }
     .ti-settings {
       position: fixed;
       right: 18px;
-      top: 104px;
+      top: 138px;
       z-index: 2147483647;
-      width: 350px;
+      width: 372px;
       max-width: calc(100vw - 36px);
       border: 1px solid rgb(17 24 39 / 14%);
       border-radius: 8px;
       background: #fffaf0;
       color: #171717;
-      padding: 12px;
+      padding: 14px;
       font: 12px/1.25 ui-sans-serif, system-ui, sans-serif;
       box-shadow: 0 24px 54px rgb(101 64 12 / 24%);
     }
@@ -272,8 +288,8 @@ function ensureUi() {
       border: 0;
       border-radius: 6px;
       min-height: 30px;
-      padding: 8px 10px;
-      background: #111827;
+      padding: 9px 11px;
+      background: #16a34a;
       color: #fff;
       font: 800 12px/1 ui-sans-serif, system-ui, sans-serif;
       cursor: pointer;
@@ -293,16 +309,35 @@ function ensureUi() {
       left: 0;
       z-index: 2147483647;
       width: 260px;
-      border: 1px solid rgb(251 191 36 / 45%);
+      border: 1px solid rgb(22 163 74 / 28%);
       border-radius: 8px;
-      background: #111827;
+      background: linear-gradient(135deg, #f0fdf4, #ffffff 58%, #fefce8);
       color: #171717;
       padding: 12px;
       font: 13px/1.35 ui-sans-serif, system-ui, sans-serif;
-      box-shadow: 0 20px 52px rgb(17 24 39 / 35%);
+      box-shadow: 0 20px 52px rgb(22 101 52 / 22%);
+      overflow: hidden;
+    }
+    .ti-popover::before {
+      content: "$  💸  🤑  💵  $  📈  💸  $  🤑  💵  $  📈  💸  $  🤑  💵  $  📈  💸  $  🤑  💵  $  📈";
+      position: absolute;
+      inset: 7px 12px;
+      color: rgb(22 101 52 / 11%);
+      font: 900 18px/1.65 ui-sans-serif, system-ui, sans-serif;
+      pointer-events: none;
+      white-space: normal;
+      word-spacing: 12px;
+      z-index: 0;
+    }
+    .ti-popover__meta,
+    .ti-popover__message,
+    .ti-suggestion,
+    .ti-dismiss {
+      position: relative;
+      z-index: 1;
     }
     .ti-popover__meta {
-      color: #facc15;
+      color: #166534;
       font-size: 11px;
       font-weight: 800;
       text-transform: uppercase;
@@ -311,7 +346,7 @@ function ensureUi() {
       padding-right: 30px;
     }
     .ti-popover__message {
-      color: #fff7ed;
+      color: #14532d;
       margin-bottom: 8px;
       padding-right: 18px;
     }
@@ -326,10 +361,10 @@ function ensureUi() {
     }
     .ti-suggestion {
       width: 100%;
-      background: #facc15;
-      color: #111827;
+      background: #16a34a;
+      color: #f0fdf4;
       text-align: left;
-      box-shadow: inset 0 -2px 0 rgb(17 24 39 / 18%);
+      box-shadow: inset 0 -2px 0 rgb(20 83 45 / 24%);
     }
     .ti-dismiss {
       position: absolute;
@@ -341,8 +376,8 @@ function ensureUi() {
       height: 26px;
       min-height: 26px;
       padding: 0;
-      background: rgb(255 255 255 / 12%);
-      color: #fff;
+      background: rgb(22 101 52 / 12%);
+      color: #14532d;
     }
   `;
   const mount = document.createElement("div");

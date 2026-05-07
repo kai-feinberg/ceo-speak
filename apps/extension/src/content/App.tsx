@@ -22,6 +22,11 @@ type AppProps = {
 };
 
 const levels: CorporateLevel[] = ["associate", "manager", "ceo"];
+const idleStatusByLevel: Record<CorporateLevel, string> = {
+  associate: "📊 Creating slide deck...",
+  manager: "💼 Making shareholder value...",
+  ceo: "🌊 Boiling the ocean..."
+};
 
 export function App({
   state,
@@ -35,15 +40,32 @@ export function App({
   onApiKeyClear
 }: AppProps) {
   const suggestion = state.activeSuggestion;
+  const status = state.isAnalyzing ? "💰 Boiling the ocean..." : idleStatusByLevel[state.level];
 
   return (
     <>
       <div className="ti-toolbar">
         <div className="ti-toolbar__row">
           <div className="ti-brand" aria-label="CEO Speak">
-            <span className="ti-brand__mark">$</span>
+            <span className="ti-brand__mark">💸</span>
             <span className="ti-brand__text">CEO Speak</span>
+            <span className="ti-brand__cash">$$$</span>
           </div>
+          <div className={state.isAnalyzing ? "ti-toolbar__status ti-toolbar__status--active" : "ti-toolbar__status"}>
+            {status}
+          </div>
+          <button
+            className={state.isSettingsOpen ? "ti-icon-button ti-icon-button--active" : "ti-icon-button"}
+            type="button"
+            aria-label="Open settings"
+            title="Open settings"
+            onClick={onSettingsToggle}
+          >
+            ⚙️
+          </button>
+        </div>
+        <div className="ti-mode-row">
+          <div className="ti-mode-row__label">Skill level</div>
           <div className="ti-levels" role="group" aria-label="Corporate jargon level">
             {levels.map((level) => (
               <button
@@ -56,18 +78,6 @@ export function App({
               </button>
             ))}
           </div>
-          <button
-            className={state.isSettingsOpen ? "ti-icon-button ti-icon-button--active" : "ti-icon-button"}
-            type="button"
-            aria-label="Open settings"
-            title="Open settings"
-            onClick={onSettingsToggle}
-          >
-            &#9881;
-          </button>
-        </div>
-        <div className={state.isAnalyzing ? "ti-toolbar__status ti-toolbar__status--active" : "ti-toolbar__status"}>
-          {state.isAnalyzing ? "Boiling ocean..." : state.hasApiKey ? "AI nonsense engine armed" : "Local chaos mode"}
         </div>
       </div>
 
@@ -95,11 +105,11 @@ export function App({
           </label>
           <div className="ti-settings__actions">
             <button className="ti-key__button" type="button" onClick={onApiKeySave}>
-              Fuel the machine
+              💵 Fuel the machine
             </button>
             {state.hasApiKey ? (
               <button className="ti-key__button ti-key__button--quiet" type="button" onClick={onApiKeyClear}>
-                Drain it
+                🧾 Drain it
               </button>
             ) : null}
           </div>
