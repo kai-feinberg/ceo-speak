@@ -30,6 +30,7 @@ const apiUrl = "http://127.0.0.1:8787/api/analyze";
 const levelStorageKey = "text-intelligence-corporate-level";
 const apiKeyStorageKey = "text-intelligence-openrouter-key";
 const cacheStorageKey = "text-intelligence-suggestion-cache";
+const documentStyleId = "text-intelligence-document-styles";
 const debounceMs = 700;
 let activeTextarea: HTMLTextAreaElement | null = null;
 let activeSurface: TextSurface | null = null;
@@ -427,12 +428,52 @@ function ensureUi() {
 
 function ensureMirror() {
   if (mirror) return;
+  ensureDocumentStyles();
   mirror = document.createElement("div");
   mirror.className = "ti-textarea-mirror";
   markerLayer = document.createElement("div");
   markerLayer.className = "ti-marker-layer";
   mirror.append(markerLayer);
   document.documentElement.append(mirror);
+}
+
+function ensureDocumentStyles() {
+  if (document.getElementById(documentStyleId)) return;
+
+  const style = document.createElement("style");
+  style.id = documentStyleId;
+  style.textContent = `
+    .ti-textarea-mirror {
+      color: transparent;
+      box-sizing: border-box;
+    }
+
+    .ti-textarea-mirror * {
+      box-sizing: border-box;
+    }
+
+    .ti-marker-layer {
+      width: 100%;
+      min-height: 100%;
+    }
+
+    .ti-marker {
+      pointer-events: auto;
+      text-decoration-line: underline;
+      text-decoration-color: #e24646;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 4px;
+      text-decoration-style: wavy;
+      color: transparent;
+      cursor: pointer;
+    }
+
+    .ti-marker--rect {
+      border-bottom: 2px wavy #e24646;
+      color: transparent;
+    }
+  `;
+  document.documentElement.append(style);
 }
 
 function onInput() {
@@ -627,9 +668,12 @@ function renderContentEditableMarkers() {
         top: `${markerRect.bottom - 2}px`,
         width: `${markerRect.width}px`,
         height: "8px",
+        borderBottom: "2px wavy #e24646",
+        cursor: "pointer",
         pointerEvents: "auto"
       });
       mark.addEventListener("mouseenter", () => showSuggestionFromRect(suggestion, markerRect));
+      mark.addEventListener("click", () => showSuggestionFromRect(suggestion, markerRect));
       markerLayer.append(mark);
     }
   }
