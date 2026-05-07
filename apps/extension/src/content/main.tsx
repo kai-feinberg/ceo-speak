@@ -2,12 +2,18 @@ import "./styles.css";
 import { createRoot, type Root } from "react-dom/client";
 import {
   AnalyzeResponseSchema,
-  applySuggestion,
   extractFocusedWindow,
   type CorporateLevel,
   type Suggestion
 } from "@text-intel/shared";
 import { App } from "./App";
+import {
+  createTextSurface,
+  findEditableFromEventTarget,
+  findGmailComposeBodies,
+  findInitiallyFocusedEditable,
+  type TextSurface
+} from "./textSurface";
 
 type OverlayState = {
   activeSuggestion: Suggestion | null;
@@ -26,6 +32,7 @@ const apiKeyStorageKey = "text-intelligence-openrouter-key";
 const cacheStorageKey = "text-intelligence-suggestion-cache";
 const debounceMs = 700;
 let activeTextarea: HTMLTextAreaElement | null = null;
+let activeSurface: TextSurface | null = null;
 let openRouterApiKey: string | null = null;
 let suggestions: Suggestion[] = [];
 let dismissedIds = new Set<string>();
@@ -36,6 +43,7 @@ let reactRoot: Root | null = null;
 let shadowHost: HTMLElement | null = null;
 let mirror: HTMLElement | null = null;
 let markerLayer: HTMLElement | null = null;
+const observedGmailBodies = new WeakSet<HTMLElement>();
 let overlayState: OverlayState = {
   activeSuggestion: null,
   position: null,
@@ -59,42 +67,73 @@ async function init() {
   };
 
   document.addEventListener("focusin", (event) => {
-    if (event.target instanceof HTMLTextAreaElement) {
-      attachToTextarea(event.target);
-    }
+    const editable = findEditableFromEventTarget(event.target);
+    if (editable) attachToEditable(editable);
   });
 
-  const focused = document.activeElement;
-  if (focused instanceof HTMLTextAreaElement) {
-    attachToTextarea(focused);
+  const focused = findInitiallyFocusedEditable();
+  if (focused) {
+    attachToEditable(focused);
   }
+
+  watchForGmailComposeBodies();
 }
 
-function attachToTextarea(textarea: HTMLTextAreaElement) {
-  if (activeTextarea === textarea) return;
-  detachTextareaListeners();
-  activeTextarea = textarea;
-  suggestions = readCachedSuggestions(textarea.value);
+function attachToEditable(element: HTMLElement) {
+  if (activeSurface?.element === element) return;
+  const surface = createTextSurface(element);
+  if (!surface) return;
+
+  detachSurfaceListeners();
+  activeSurface = surface;
+  activeTextarea = element instanceof HTMLTextAreaElement ? element : null;
+  suggestions = readCachedSuggestions(surface.getText());
   dismissedIds = new Set();
   appliedIds = new Set();
   ensureUi();
   ensureMirror();
-  textarea.addEventListener("input", onInput);
-  textarea.addEventListener("scroll", renderMarkers);
-  textarea.addEventListener("click", renderMarkers);
-  textarea.addEventListener("keyup", renderMarkers);
+  surface.element.addEventListener("input", onInput);
+  surface.element.addEventListener("scroll", renderMarkers);
+  surface.element.addEventListener("click", renderMarkers);
+  surface.element.addEventListener("keyup", renderMarkers);
   window.addEventListener("resize", renderMarkers);
   renderMarkers();
   queueAnalyze();
 }
 
-function detachTextareaListeners() {
-  if (!activeTextarea) return;
-  activeTextarea.removeEventListener("input", onInput);
-  activeTextarea.removeEventListener("scroll", renderMarkers);
-  activeTextarea.removeEventListener("click", renderMarkers);
-  activeTextarea.removeEventListener("keyup", renderMarkers);
+function detachSurfaceListeners() {
+  if (!activeSurface) return;
+  activeSurface.element.removeEventListener("input", onInput);
+  activeSurface.element.removeEventListener("scroll", renderMarkers);
+  activeSurface.element.removeEventListener("click", renderMarkers);
+  activeSurface.element.removeEventListener("keyup", renderMarkers);
   window.removeEventListener("resize", renderMarkers);
+}
+
+function watchForGmailComposeBodies() {
+  if (!location.hostname.endsWith("mail.google.com")) return;
+
+  for (const body of findGmailComposeBodies()) {
+    observeGmailBody(body);
+  }
+
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        for (const body of findGmailComposeBodies(node)) {
+          observeGmailBody(body);
+        }
+      }
+    }
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+}
+
+function observeGmailBody(body: HTMLElement) {
+  if (observedGmailBodies.has(body)) return;
+  observedGmailBodies.add(body);
+  body.addEventListener("focus", () => attachToEditable(body), { once: true });
 }
 
 function ensureUi() {
@@ -397,15 +436,16 @@ function ensureMirror() {
 }
 
 function onInput() {
-  if (!activeTextarea) return;
-  suggestions = keepSuggestionsMatchingText(activeTextarea.value, suggestions);
+  if (!activeSurface) return;
+  const text = activeSurface.getText();
+  suggestions = keepSuggestionsMatchingText(text, suggestions);
   if (
     overlayState.activeSuggestion &&
     !suggestions.some((suggestion) => suggestion.id === overlayState.activeSuggestion?.id)
   ) {
     overlayState = { ...overlayState, activeSuggestion: null, position: null };
   }
-  writeCachedSuggestions(activeTextarea.value, suggestions);
+  writeCachedSuggestions(text, suggestions);
   renderApp();
   renderMarkers();
   queueAnalyze();
@@ -419,17 +459,19 @@ function queueAnalyze() {
 }
 
 async function analyze() {
-  if (!activeTextarea) return;
+  if (!activeSurface) return;
+  const surface = activeSurface;
+  const text = surface.getText();
   const currentRequestId = ++requestId;
   const request = {
-    ...extractFocusedWindow(activeTextarea.value, activeTextarea.selectionStart),
+    ...extractFocusedWindow(text, surface.getCursorOffset()),
     level: overlayState.level,
     ...(openRouterApiKey ? { openRouterApiKey } : {})
   };
 
   if (!request.windowText.trim()) {
     suggestions = [];
-    writeCachedSuggestions(activeTextarea.value, suggestions);
+    writeCachedSuggestions(text, suggestions);
     overlayState = { ...overlayState, isAnalyzing: false };
     renderApp();
     renderMarkers();
@@ -445,15 +487,15 @@ async function analyze() {
 
     if (!response.ok) throw new Error(`Analyze failed: ${response.status}`);
     const parsed = AnalyzeResponseSchema.parse(await response.json());
-    if (currentRequestId !== requestId) return;
+    if (currentRequestId !== requestId || activeSurface !== surface) return;
     suggestions = mergeSuggestions(
-      activeTextarea.value,
+      surface.getText(),
       suggestions,
       parsed.suggestions.filter(
         (suggestion) => !dismissedIds.has(suggestion.id) && !appliedIds.has(suggestion.id)
       )
     );
-    writeCachedSuggestions(activeTextarea.value, suggestions);
+    writeCachedSuggestions(surface.getText(), suggestions);
   } catch (error) {
     console.error(error);
   } finally {
@@ -466,6 +508,16 @@ async function analyze() {
 }
 
 function renderMarkers() {
+  if (!activeSurface || !mirror || !markerLayer) return;
+  if (activeTextarea) {
+    renderTextareaMarkers();
+    return;
+  }
+
+  renderContentEditableMarkers();
+}
+
+function renderTextareaMarkers() {
   if (!activeTextarea || !mirror || !markerLayer) return;
   const rect = activeTextarea.getBoundingClientRect();
   const computed = window.getComputedStyle(activeTextarea);
@@ -489,6 +541,13 @@ function renderMarkers() {
   });
 
   markerLayer.textContent = "";
+  Object.assign(markerLayer.style, {
+    position: "static",
+    inset: "",
+    width: "100%",
+    minHeight: "100%",
+    pointerEvents: ""
+  });
   const text = activeTextarea.value;
   const visibleSuggestions = suggestions.filter((suggestion) => !dismissedIds.has(suggestion.id));
   const parts: Array<string | Suggestion> = [];
@@ -522,8 +581,66 @@ function renderMarkers() {
   markerLayer.append(scrolled);
 }
 
+function renderContentEditableMarkers() {
+  if (!activeSurface || !mirror || !markerLayer) return;
+  const rect = activeSurface.element.getBoundingClientRect();
+
+  Object.assign(mirror.style, {
+    position: "fixed",
+    top: "0",
+    left: "0",
+    width: "0",
+    height: "0",
+    padding: "0",
+    border: "0",
+    font: "inherit",
+    lineHeight: "normal",
+    letterSpacing: "normal",
+    whiteSpace: "normal",
+    overflowWrap: "normal",
+    overflow: "visible",
+    pointerEvents: "none",
+    zIndex: "2147483646"
+  });
+
+  markerLayer.textContent = "";
+  Object.assign(markerLayer.style, {
+    position: "fixed",
+    inset: "0",
+    width: "100vw",
+    minHeight: "100vh",
+    pointerEvents: "none"
+  });
+
+  if (rect.bottom < 0 || rect.top > window.innerHeight) return;
+
+  const visibleSuggestions = suggestions.filter((suggestion) => !dismissedIds.has(suggestion.id));
+  for (const suggestion of visibleSuggestions) {
+    const rects = activeSurface.getSuggestionClientRects(suggestion);
+    for (const markerRect of rects) {
+      const mark = document.createElement("span");
+      mark.className = "ti-marker ti-marker--rect";
+      mark.dataset.suggestionId = suggestion.id;
+      Object.assign(mark.style, {
+        position: "fixed",
+        left: `${markerRect.left}px`,
+        top: `${markerRect.bottom - 2}px`,
+        width: `${markerRect.width}px`,
+        height: "8px",
+        pointerEvents: "auto"
+      });
+      mark.addEventListener("mouseenter", () => showSuggestionFromRect(suggestion, markerRect));
+      markerLayer.append(mark);
+    }
+  }
+}
+
 function showSuggestion(suggestion: Suggestion, marker: HTMLElement) {
   const rect = marker.getBoundingClientRect();
+  showSuggestionFromRect(suggestion, rect);
+}
+
+function showSuggestionFromRect(suggestion: Suggestion, rect: DOMRect) {
   overlayState = {
     ...overlayState,
     activeSuggestion: suggestion,
@@ -536,8 +653,8 @@ function showSuggestion(suggestion: Suggestion, marker: HTMLElement) {
 }
 
 function applyActiveSuggestion(suggestion: Suggestion) {
-  if (!activeTextarea) return;
-  const nextValue = applySuggestion(activeTextarea.value, suggestion);
+  if (!activeSurface) return;
+  const currentText = activeSurface.getText();
   const delta = suggestion.replacement.length - (suggestion.end - suggestion.start);
   appliedIds.add(suggestion.id);
   suggestions = suggestions
@@ -546,16 +663,16 @@ function applyActiveSuggestion(suggestion: Suggestion) {
       item.start >= suggestion.end
         ? { ...item, start: item.start + delta, end: item.end + delta }
         : item
-    );
+  );
   overlayState = { ...overlayState, activeSuggestion: null, position: null };
-  activeTextarea.value = nextValue;
-  const cursor = suggestion.start + suggestion.replacement.length;
-  activeTextarea.setSelectionRange(cursor, cursor);
-  writeCachedSuggestions(activeTextarea.value, suggestions);
+  activeSurface.replaceRange(suggestion.start, suggestion.end, suggestion.replacement);
+  writeCachedSuggestions(
+    `${currentText.slice(0, suggestion.start)}${suggestion.replacement}${currentText.slice(suggestion.end)}`,
+    suggestions
+  );
   renderApp();
   renderMarkers();
-  activeTextarea.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertReplacementText" }));
-  activeTextarea.focus();
+  activeSurface.focus();
 }
 
 function dismissSuggestion(id: string) {
@@ -612,7 +729,7 @@ async function changeLevel(level: CorporateLevel) {
   suggestions = [];
   dismissedIds = new Set();
   appliedIds = new Set();
-  if (activeTextarea) writeCachedSuggestions(activeTextarea.value, suggestions);
+  if (activeSurface) writeCachedSuggestions(activeSurface.getText(), suggestions);
   renderApp();
   renderMarkers();
   queueAnalyze();

@@ -22,3 +22,8 @@
   color: transparent;
   cursor: pointer;
 }
+
+.ti-marker--rect {
+  border-bottom: 2px wavy #e24646;
+  color: transparent;
+}

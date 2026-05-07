@@ -7,10 +7,10 @@
     "default_title": "Text Intelligence"
   },
   "permissions": ["storage"],
-  "host_permissions": ["http://127.0.0.1:5173/*", "http://localhost:5173/*"],
+  "host_permissions": ["http://127.0.0.1:5173/*", "http://localhost:5173/*", "https://mail.google.com/*"],
   "content_scripts": [
     {
-      "matches": ["http://127.0.0.1:5173/*", "http://localhost:5173/*"],
+      "matches": ["http://127.0.0.1:5173/*", "http://localhost:5173/*", "https://mail.google.com/*"],
       "js": ["src/content/main.tsx"],
       "run_at": "document_idle"
     }
