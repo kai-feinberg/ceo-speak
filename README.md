@@ -1,6 +1,6 @@
 # Text Intelligence Extension
 
-A Chrome MV3 prototype for Grammarly-style suggestions in plain textareas.
+A Chrome MV3 prototype for Grammarly-style suggestions in plain textareas. The current mode rewrites plain text into corporate/consulting jargon.
 
 ## Stack
 
@@ -10,6 +10,16 @@ A Chrome MV3 prototype for Grammarly-style suggestions in plain textareas.
 - Local Vite demo page with a plain textarea
 - Local Node/Express API that calls OpenRouter with structured JSON output
 - Shared TypeScript/Zod contracts in `packages/shared`
+
+## Corporate Levels
+
+The injected toolbar supports three rewrite levels:
+
+- `associate`: light professional polish
+- `manager`: clear consulting/corporate phrasing
+- `ceo`: aggressive executive jargon
+
+Suggestions are debounced and cached in page `localStorage` by text and level. Existing valid underlines stay visible while fresh AI suggestions are loading.
 
 ## Local Setup
 

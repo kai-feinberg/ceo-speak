@@ -4,6 +4,7 @@ import {
   AnalyzeResponseSchema,
   applySuggestion,
   extractFocusedWindow,
+  type CorporateLevel,
   type Suggestion
 } from "@text-intel/shared";
 import { App } from "./App";
@@ -12,13 +13,17 @@ type OverlayState = {
   activeSuggestion: Suggestion | null;
   position: { top: number; left: number } | null;
   isAnalyzing: boolean;
+  level: CorporateLevel;
 };
 
 const apiUrl = "http://127.0.0.1:8787/api/analyze";
+const levelStorageKey = "text-intelligence-corporate-level";
+const cacheStorageKey = "text-intelligence-suggestion-cache";
 const debounceMs = 700;
 let activeTextarea: HTMLTextAreaElement | null = null;
 let suggestions: Suggestion[] = [];
 let dismissedIds = new Set<string>();
+let appliedIds = new Set<string>();
 let analyzeTimer = 0;
 let requestId = 0;
 let reactRoot: Root | null = null;
@@ -28,7 +33,8 @@ let markerLayer: HTMLElement | null = null;
 let overlayState: OverlayState = {
   activeSuggestion: null,
   position: null,
-  isAnalyzing: false
+  isAnalyzing: false,
+  level: readLevel()
 };
 
 init();
@@ -50,14 +56,17 @@ function attachToTextarea(textarea: HTMLTextAreaElement) {
   if (activeTextarea === textarea) return;
   detachTextareaListeners();
   activeTextarea = textarea;
-  suggestions = [];
+  suggestions = readCachedSuggestions(textarea.value);
   dismissedIds = new Set();
+  appliedIds = new Set();
   ensureUi();
   ensureMirror();
   textarea.addEventListener("input", onInput);
   textarea.addEventListener("scroll", renderMarkers);
   textarea.addEventListener("click", renderMarkers);
+  textarea.addEventListener("keyup", renderMarkers);
   window.addEventListener("resize", renderMarkers);
+  renderMarkers();
   queueAnalyze();
 }
 
@@ -66,6 +75,7 @@ function detachTextareaListeners() {
   activeTextarea.removeEventListener("input", onInput);
   activeTextarea.removeEventListener("scroll", renderMarkers);
   activeTextarea.removeEventListener("click", renderMarkers);
+  activeTextarea.removeEventListener("keyup", renderMarkers);
   window.removeEventListener("resize", renderMarkers);
 }
 
@@ -77,18 +87,53 @@ function ensureUi() {
   const style = document.createElement("style");
   style.textContent = `
     :host { all: initial; }
-    .ti-status {
+    .ti-toolbar {
       position: fixed;
       right: 18px;
       bottom: 18px;
       z-index: 2147483647;
       border: 1px solid rgb(30 30 30 / 14%);
-      border-radius: 999px;
-      background: #181818;
-      color: #fff;
-      padding: 8px 11px;
+      border-radius: 8px;
+      background: #fff;
+      color: #171717;
+      padding: 8px;
       font: 12px/1.2 ui-sans-serif, system-ui, sans-serif;
       box-shadow: 0 10px 28px rgb(0 0 0 / 20%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ti-toolbar__label {
+      color: #666;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .ti-toolbar__status {
+      color: #476cdb;
+      font-weight: 800;
+    }
+    .ti-levels {
+      display: flex;
+      gap: 3px;
+      border: 1px solid rgb(24 24 24 / 12%);
+      border-radius: 7px;
+      padding: 2px;
+      background: #f5f5f5;
+    }
+    .ti-level {
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: #555;
+      padding: 5px 7px;
+      font: 700 12px/1 ui-sans-serif, system-ui, sans-serif;
+      text-transform: capitalize;
+      cursor: pointer;
+    }
+    .ti-level--active {
+      background: #181818;
+      color: #fff;
     }
     .ti-popover {
       position: fixed;
@@ -153,9 +198,15 @@ function ensureMirror() {
 }
 
 function onInput() {
-  suggestions = [];
-  dismissedIds = new Set();
-  overlayState = { ...overlayState, activeSuggestion: null, position: null };
+  if (!activeTextarea) return;
+  suggestions = keepSuggestionsMatchingText(activeTextarea.value, suggestions);
+  if (
+    overlayState.activeSuggestion &&
+    !suggestions.some((suggestion) => suggestion.id === overlayState.activeSuggestion?.id)
+  ) {
+    overlayState = { ...overlayState, activeSuggestion: null, position: null };
+  }
+  writeCachedSuggestions(activeTextarea.value, suggestions);
   renderApp();
   renderMarkers();
   queueAnalyze();
@@ -171,10 +222,14 @@ function queueAnalyze() {
 async function analyze() {
   if (!activeTextarea) return;
   const currentRequestId = ++requestId;
-  const request = extractFocusedWindow(activeTextarea.value, activeTextarea.selectionStart);
+  const request = {
+    ...extractFocusedWindow(activeTextarea.value, activeTextarea.selectionStart),
+    level: overlayState.level
+  };
 
   if (!request.windowText.trim()) {
     suggestions = [];
+    writeCachedSuggestions(activeTextarea.value, suggestions);
     overlayState = { ...overlayState, isAnalyzing: false };
     renderApp();
     renderMarkers();
@@ -191,10 +246,16 @@ async function analyze() {
     if (!response.ok) throw new Error(`Analyze failed: ${response.status}`);
     const parsed = AnalyzeResponseSchema.parse(await response.json());
     if (currentRequestId !== requestId) return;
-    suggestions = parsed.suggestions.filter((suggestion) => !dismissedIds.has(suggestion.id));
+    suggestions = mergeSuggestions(
+      activeTextarea.value,
+      suggestions,
+      parsed.suggestions.filter(
+        (suggestion) => !dismissedIds.has(suggestion.id) && !appliedIds.has(suggestion.id)
+      )
+    );
+    writeCachedSuggestions(activeTextarea.value, suggestions);
   } catch (error) {
     console.error(error);
-    suggestions = [];
   } finally {
     if (currentRequestId === requestId) {
       overlayState = { ...overlayState, isAnalyzing: false };
@@ -277,9 +338,22 @@ function showSuggestion(suggestion: Suggestion, marker: HTMLElement) {
 function applyActiveSuggestion(suggestion: Suggestion) {
   if (!activeTextarea) return;
   const nextValue = applySuggestion(activeTextarea.value, suggestion);
+  const delta = suggestion.replacement.length - (suggestion.end - suggestion.start);
+  appliedIds.add(suggestion.id);
+  suggestions = suggestions
+    .filter((item) => item.id !== suggestion.id)
+    .map((item) =>
+      item.start >= suggestion.end
+        ? { ...item, start: item.start + delta, end: item.end + delta }
+        : item
+    );
+  overlayState = { ...overlayState, activeSuggestion: null, position: null };
   activeTextarea.value = nextValue;
   const cursor = suggestion.start + suggestion.replacement.length;
   activeTextarea.setSelectionRange(cursor, cursor);
+  writeCachedSuggestions(activeTextarea.value, suggestions);
+  renderApp();
+  renderMarkers();
   activeTextarea.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertReplacementText" }));
   activeTextarea.focus();
 }
@@ -294,6 +368,74 @@ function dismissSuggestion(id: string) {
 
 function renderApp() {
   reactRoot?.render(
-    <App state={overlayState} onApply={applyActiveSuggestion} onDismiss={dismissSuggestion} />
+    <App
+      state={overlayState}
+      onApply={applyActiveSuggestion}
+      onDismiss={dismissSuggestion}
+      onLevelChange={changeLevel}
+    />
   );
+}
+
+function changeLevel(level: CorporateLevel) {
+  if (overlayState.level === level) return;
+  overlayState = {
+    ...overlayState,
+    level,
+    activeSuggestion: null,
+    position: null
+  };
+  localStorage.setItem(levelStorageKey, level);
+  suggestions = [];
+  dismissedIds = new Set();
+  appliedIds = new Set();
+  if (activeTextarea) writeCachedSuggestions(activeTextarea.value, suggestions);
+  renderApp();
+  renderMarkers();
+  queueAnalyze();
+}
+
+function readLevel(): CorporateLevel {
+  const value = localStorage.getItem(levelStorageKey);
+  return value === "associate" || value === "manager" || value === "ceo" ? value : "manager";
+}
+
+function cacheKey(text: string) {
+  return `${overlayState.level}:${text}`;
+}
+
+function readCachedSuggestions(text: string): Suggestion[] {
+  try {
+    const raw = localStorage.getItem(cacheStorageKey);
+    if (!raw) return [];
+    const cache = JSON.parse(raw) as Record<string, Suggestion[]>;
+    return keepSuggestionsMatchingText(text, cache[cacheKey(text)] ?? []);
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedSuggestions(text: string, nextSuggestions: Suggestion[]) {
+  try {
+    const raw = localStorage.getItem(cacheStorageKey);
+    const cache = raw ? (JSON.parse(raw) as Record<string, Suggestion[]>) : {};
+    cache[cacheKey(text)] = nextSuggestions.slice(0, 12);
+    const entries = Object.entries(cache).slice(-25);
+    localStorage.setItem(cacheStorageKey, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // Local storage may be unavailable on unusual pages.
+  }
+}
+
+function keepSuggestionsMatchingText(text: string, source: Suggestion[]) {
+  return source.filter((suggestion) => text.slice(suggestion.start, suggestion.end) === suggestion.original);
+}
+
+function mergeSuggestions(text: string, current: Suggestion[], incoming: Suggestion[]) {
+  const byRange = new Map<string, Suggestion>();
+  for (const suggestion of [...current, ...incoming]) {
+    if (text.slice(suggestion.start, suggestion.end) !== suggestion.original) continue;
+    byRange.set(`${suggestion.start}:${suggestion.end}:${suggestion.original}:${suggestion.replacement}`, suggestion);
+  }
+  return [...byRange.values()].sort((a, b) => a.start - b.start).slice(0, 12);
 }

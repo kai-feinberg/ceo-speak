@@ -1,13 +1,17 @@
 import { z } from "zod";
 
-export const SuggestionTypeSchema = z.enum(["spelling", "clarity"]);
+export const CorporateLevelSchema = z.enum(["associate", "manager", "ceo"]);
+export type CorporateLevel = z.infer<typeof CorporateLevelSchema>;
+
+export const SuggestionTypeSchema = z.enum(["spelling", "clarity", "corporate"]);
 export type SuggestionType = z.infer<typeof SuggestionTypeSchema>;
 
 export const AnalyzeRequestSchema = z.object({
   fullTextLength: z.number().int().nonnegative(),
   windowText: z.string().min(1),
   windowStart: z.number().int().nonnegative(),
-  cursorOffset: z.number().int().nonnegative()
+  cursorOffset: z.number().int().nonnegative(),
+  level: CorporateLevelSchema.default("manager")
 });
 
 export type AnalyzeRequest = z.infer<typeof AnalyzeRequestSchema>;
@@ -50,7 +54,8 @@ export function extractFocusedWindow(
       fullTextLength: text.length,
       windowText: text.slice(paragraphStart, paragraphEnd),
       windowStart: paragraphStart,
-      cursorOffset: safeCursor
+      cursorOffset: safeCursor,
+      level: "manager"
     };
   }
 
@@ -62,7 +67,8 @@ export function extractFocusedWindow(
     fullTextLength: text.length,
     windowText: text.slice(windowStart, windowEnd),
     windowStart,
-    cursorOffset: safeCursor
+    cursorOffset: safeCursor,
+    level: "manager"
   };
 }
 

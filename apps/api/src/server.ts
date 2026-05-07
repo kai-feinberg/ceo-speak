@@ -43,8 +43,11 @@ app.post("/api/analyze", async (req, res) => {
 
   try {
     const response = openai
-      ? await analyzeWithOpenRouter(parsed.data)
-      : analyzeWithMock(parsed.data.windowText, parsed.data.windowStart);
+      ? mergeAnalyzeResponses(
+          await analyzeWithOpenRouter(parsed.data),
+          analyzeWithRules(parsed.data.windowText, parsed.data.windowStart, parsed.data.level)
+        )
+      : analyzeWithRules(parsed.data.windowText, parsed.data.windowStart, parsed.data.level);
 
     res.json(normalizeSuggestions(parsed.data, response));
   } catch (error) {
@@ -56,15 +59,25 @@ app.post("/api/analyze", async (req, res) => {
 async function analyzeWithOpenRouter(request: {
   windowText: string;
   windowStart: number;
+  level: "associate" | "manager" | "ceo";
 }): Promise<AnalyzeResponse> {
+  const levelInstructions = {
+    associate:
+      "Associate level: lightly professionalize the text. Prefer modest consulting phrasing, concise wording, and mild terms like align, sync, follow up, and next steps.",
+    manager:
+      "Manager level: noticeably corporate. Use consulting and workplace jargon such as circle back, touch base, alignment, unblock, socialize, parking lot, double click, and end of day when it fits.",
+    ceo:
+      "CEO level: aggressively executive and absurdly corporate while still grammatical. Lean into strategy, leverage, cross-functional alignment, north star, stakeholder buy-in, operationalize, unlock value, boil the ocean, and similar jargon."
+  } satisfies Record<typeof request.level, string>;
+
   const completion = await openai!.chat.completions.create({
     model,
-    temperature: 0.1,
+    temperature: 0.35,
     messages: [
       {
         role: "system",
         content:
-          "You are a precise writing assistant. Return only spelling or clarity suggestions that improve the text. Use absolute character offsets based on the provided windowStart. Do not suggest changes unless the replacement is clearly better."
+          `You rewrite plain user text into corporate/consulting jargon. ${levelInstructions[request.level]} Return suggestions that transform ordinary wording into corporate speak. Use absolute character offsets based on the provided windowStart. Every suggestion must replace a contiguous exact substring from the input, and original must exactly match that substring. Prefer simple phrase substitutions like "meet" -> "touch base", "discuss" -> "double click on", "later today" -> "by end of day", and "agree" -> "get alignment".`
       },
       {
         role: "user",
@@ -91,7 +104,7 @@ async function analyzeWithOpenRouter(request: {
                 additionalProperties: false,
                 properties: {
                   id: { type: "string" },
-                  type: { type: "string", enum: ["spelling", "clarity"] },
+                  type: { type: "string", enum: ["corporate"] },
                   start: { type: "integer" },
                   end: { type: "integer" },
                   original: { type: "string" },
@@ -123,22 +136,61 @@ async function analyzeWithOpenRouter(request: {
   return AnalyzeResponseSchema.parse(json);
 }
 
-function analyzeWithMock(windowText: string, windowStart: number): AnalyzeResponse {
-  const fixtures = [
-    { original: "sentnce", replacement: "sentence", message: "Fix spelling" },
-    { original: "teh", replacement: "the", message: "Fix spelling" },
-    { original: "very very", replacement: "very", message: "Remove repetition" },
-    { original: "in order to", replacement: "to", message: "Make this more concise" }
-  ];
+function analyzeWithRules(
+  windowText: string,
+  windowStart: number,
+  level: "associate" | "manager" | "ceo"
+): AnalyzeResponse {
+  const fixtures = {
+    associate: [
+      { original: "talk about", replacement: "discuss", message: "Make this a little more professional" },
+      { original: "later today", replacement: "by end of day", message: "Use workplace deadline phrasing" },
+      { original: "meet", replacement: "sync", message: "Add light corporate phrasing" },
+      { original: "agree", replacement: "align", message: "Use alignment-oriented phrasing" }
+    ],
+    manager: [
+      { original: "talk about", replacement: "double click on", message: "Make this more consulting-forward" },
+      { original: "later today", replacement: "by end of day", message: "Add deadline-coded corporate phrasing" },
+      { original: "meet", replacement: "touch base", message: "Shift this into corporate speak" },
+      { original: "agree", replacement: "get alignment", message: "Use alignment-oriented phrasing" }
+    ],
+    ceo: [
+      {
+        original: "talk about",
+        replacement: "double click on the strategic implications of",
+        message: "Escalate this into executive strategy language"
+      },
+      {
+        original: "later today",
+        replacement: "by end of day to maintain cross-functional momentum",
+        message: "Maximize executive urgency"
+      },
+      {
+        original: "meet",
+        replacement: "convene a stakeholder alignment touchpoint",
+        message: "Turn this into CEO-grade calendar language"
+      },
+      {
+        original: "agree",
+        replacement: "secure strategic alignment",
+        message: "Make consensus sound executive"
+      },
+      {
+        original: "plan",
+        replacement: "north-star roadmap",
+        message: "Add executive roadmap framing"
+      }
+    ]
+  } satisfies Record<typeof level, Array<{ original: string; replacement: string; message: string }>>;
 
   return {
-    suggestions: fixtures.flatMap((fixture, index) => {
+    suggestions: fixtures[level].flatMap((fixture, index) => {
       const localStart = windowText.toLowerCase().indexOf(fixture.original);
       if (localStart === -1) return [];
       return [
         {
           id: `mock-${index}`,
-          type: fixture.message.includes("spelling") ? "spelling" : "clarity",
+          type: "corporate",
           start: windowStart + localStart,
           end: windowStart + localStart + fixture.original.length,
           original: windowText.slice(localStart, localStart + fixture.original.length),
@@ -149,6 +201,14 @@ function analyzeWithMock(windowText: string, windowStart: number): AnalyzeRespon
       ];
     })
   };
+}
+
+function mergeAnalyzeResponses(primary: AnalyzeResponse, fallback: AnalyzeResponse): AnalyzeResponse {
+  const merged = new Map<string, AnalyzeResponse["suggestions"][number]>();
+  for (const suggestion of [...primary.suggestions, ...fallback.suggestions]) {
+    merged.set(`${suggestion.start}:${suggestion.end}:${suggestion.original}`, suggestion);
+  }
+  return { suggestions: [...merged.values()].sort((a, b) => a.start - b.start).slice(0, 12) };
 }
 
 app.listen(port, () => {
