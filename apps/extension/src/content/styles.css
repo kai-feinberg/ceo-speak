@@ -1,0 +1,24 @@
+.ti-textarea-mirror {
+  color: transparent;
+  box-sizing: border-box;
+}
+
+.ti-textarea-mirror * {
+  box-sizing: border-box;
+}
+
+.ti-marker-layer {
+  width: 100%;
+  min-height: 100%;
+}
+
+.ti-marker {
+  pointer-events: auto;
+  text-decoration-line: underline;
+  text-decoration-color: #e24646;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  text-decoration-style: wavy;
+  color: transparent;
+  cursor: pointer;
+}
