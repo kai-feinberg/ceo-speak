@@ -6,7 +6,7 @@
   "action": {
     "default_title": "Text Intelligence"
   },
-  "permissions": [],
+  "permissions": ["storage"],
   "host_permissions": ["http://127.0.0.1:5173/*", "http://localhost:5173/*"],
   "content_scripts": [
     {

@@ -42,12 +42,17 @@ app.post("/api/analyze", async (req, res) => {
   }
 
   try {
-    const response = openai
-      ? mergeAnalyzeResponses(
-          await analyzeWithOpenRouter(parsed.data),
-          analyzeWithRules(parsed.data.windowText, parsed.data.windowStart, parsed.data.level)
-        )
-      : analyzeWithRules(parsed.data.windowText, parsed.data.windowStart, parsed.data.level);
+    const client = getOpenRouterClient(parsed.data.openRouterApiKey);
+    const ruleResponse = analyzeWithRules(parsed.data.windowText, parsed.data.windowStart, parsed.data.level);
+    let response = ruleResponse;
+
+    if (client) {
+      try {
+        response = mergeAnalyzeResponses(await analyzeWithOpenRouter(parsed.data, client), ruleResponse);
+      } catch (error) {
+        console.warn("OpenRouter analysis failed; using local corporate rules.", error);
+      }
+    }
 
     res.json(normalizeSuggestions(parsed.data, response));
   } catch (error) {
@@ -56,11 +61,27 @@ app.post("/api/analyze", async (req, res) => {
   }
 });
 
-async function analyzeWithOpenRouter(request: {
-  windowText: string;
-  windowStart: number;
-  level: "associate" | "manager" | "ceo";
-}): Promise<AnalyzeResponse> {
+function getOpenRouterClient(userApiKey?: string) {
+  if (!userApiKey) return openai;
+
+  return new OpenAI({
+    apiKey: userApiKey,
+    baseURL: "https://openrouter.ai/api/v1",
+    defaultHeaders: {
+      "HTTP-Referer": "http://localhost:5173",
+      "X-OpenRouter-Title": "Text Intelligence Extension"
+    }
+  });
+}
+
+async function analyzeWithOpenRouter(
+  request: {
+    windowText: string;
+    windowStart: number;
+    level: "associate" | "manager" | "ceo";
+  },
+  client: OpenAI
+): Promise<AnalyzeResponse> {
   const levelInstructions = {
     associate:
       "Associate level: lightly professionalize the text. Prefer modest consulting phrasing, concise wording, and mild terms like align, sync, follow up, and next steps.",
@@ -70,7 +91,7 @@ async function analyzeWithOpenRouter(request: {
       "CEO level: aggressively executive and absurdly corporate while still grammatical. Lean into strategy, leverage, cross-functional alignment, north star, stakeholder buy-in, operationalize, unlock value, boil the ocean, and similar jargon."
   } satisfies Record<typeof request.level, string>;
 
-  const completion = await openai!.chat.completions.create({
+  const completion = await client.chat.completions.create({
     model,
     temperature: 0.35,
     messages: [

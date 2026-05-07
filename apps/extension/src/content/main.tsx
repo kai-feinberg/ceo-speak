@@ -14,13 +14,18 @@ type OverlayState = {
   position: { top: number; left: number } | null;
   isAnalyzing: boolean;
   level: CorporateLevel;
+  apiKeyDraft: string;
+  hasApiKey: boolean;
+  apiKeyMessage: string | null;
 };
 
 const apiUrl = "http://127.0.0.1:8787/api/analyze";
 const levelStorageKey = "text-intelligence-corporate-level";
+const apiKeyStorageKey = "text-intelligence-openrouter-key";
 const cacheStorageKey = "text-intelligence-suggestion-cache";
 const debounceMs = 700;
 let activeTextarea: HTMLTextAreaElement | null = null;
+let openRouterApiKey: string | null = null;
 let suggestions: Suggestion[] = [];
 let dismissedIds = new Set<string>();
 let appliedIds = new Set<string>();
@@ -34,12 +39,23 @@ let overlayState: OverlayState = {
   activeSuggestion: null,
   position: null,
   isAnalyzing: false,
-  level: readLevel()
+  level: "manager",
+  apiKeyDraft: "",
+  hasApiKey: false,
+  apiKeyMessage: null
 };
 
-init();
+void init();
 
-function init() {
+async function init() {
+  const settings = await readSettings();
+  openRouterApiKey = settings.openRouterApiKey;
+  overlayState = {
+    ...overlayState,
+    level: settings.level,
+    hasApiKey: Boolean(settings.openRouterApiKey)
+  };
+
   document.addEventListener("focusin", (event) => {
     if (event.target instanceof HTMLTextAreaElement) {
       attachToTextarea(event.target);
@@ -90,7 +106,7 @@ function ensureUi() {
     .ti-toolbar {
       position: fixed;
       right: 18px;
-      bottom: 18px;
+      top: 18px;
       z-index: 2147483647;
       border: 1px solid rgb(30 30 30 / 14%);
       border-radius: 8px;
@@ -99,6 +115,14 @@ function ensureUi() {
       padding: 8px;
       font: 12px/1.2 ui-sans-serif, system-ui, sans-serif;
       box-shadow: 0 10px 28px rgb(0 0 0 / 20%);
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 7px;
+      width: 360px;
+      max-width: calc(100vw - 36px);
+    }
+    .ti-toolbar__row {
       display: flex;
       align-items: center;
       gap: 8px;
@@ -134,6 +158,43 @@ function ensureUi() {
     .ti-level--active {
       background: #181818;
       color: #fff;
+    }
+    .ti-key {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 5px;
+    }
+    .ti-key__input {
+      min-width: 0;
+      border: 1px solid rgb(24 24 24 / 16%);
+      border-radius: 6px;
+      padding: 7px 8px;
+      color: #171717;
+      background: #fff;
+      font: 12px/1 ui-sans-serif, system-ui, sans-serif;
+      outline: none;
+    }
+    .ti-key__input:focus {
+      border-color: #476cdb;
+      box-shadow: 0 0 0 2px rgb(71 108 219 / 16%);
+    }
+    .ti-key__button {
+      border: 0;
+      border-radius: 6px;
+      min-height: 30px;
+      padding: 6px 9px;
+      background: #181818;
+      color: #fff;
+      font: 800 12px/1 ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    .ti-key__button--quiet {
+      background: #ededed;
+      color: #555;
+    }
+    .ti-key__message {
+      color: #476cdb;
+      font: 700 11px/1.2 ui-sans-serif, system-ui, sans-serif;
     }
     .ti-popover {
       position: fixed;
@@ -224,7 +285,8 @@ async function analyze() {
   const currentRequestId = ++requestId;
   const request = {
     ...extractFocusedWindow(activeTextarea.value, activeTextarea.selectionStart),
-    level: overlayState.level
+    level: overlayState.level,
+    ...(openRouterApiKey ? { openRouterApiKey } : {})
   };
 
   if (!request.windowText.trim()) {
@@ -373,11 +435,14 @@ function renderApp() {
       onApply={applyActiveSuggestion}
       onDismiss={dismissSuggestion}
       onLevelChange={changeLevel}
+      onApiKeyDraftChange={changeApiKeyDraft}
+      onApiKeySave={saveApiKey}
+      onApiKeyClear={clearApiKey}
     />
   );
 }
 
-function changeLevel(level: CorporateLevel) {
+async function changeLevel(level: CorporateLevel) {
   if (overlayState.level === level) return;
   overlayState = {
     ...overlayState,
@@ -385,7 +450,7 @@ function changeLevel(level: CorporateLevel) {
     activeSuggestion: null,
     position: null
   };
-  localStorage.setItem(levelStorageKey, level);
+  await writeSetting(levelStorageKey, level);
   suggestions = [];
   dismissedIds = new Set();
   appliedIds = new Set();
@@ -395,9 +460,86 @@ function changeLevel(level: CorporateLevel) {
   queueAnalyze();
 }
 
-function readLevel(): CorporateLevel {
-  const value = localStorage.getItem(levelStorageKey);
-  return value === "associate" || value === "manager" || value === "ceo" ? value : "manager";
+function changeApiKeyDraft(value: string) {
+  overlayState = {
+    ...overlayState,
+    apiKeyDraft: value,
+    apiKeyMessage: null
+  };
+  renderApp();
+}
+
+async function saveApiKey() {
+  const key = overlayState.apiKeyDraft.trim();
+  if (!key) {
+    overlayState = { ...overlayState, apiKeyMessage: "Paste an OpenRouter key first." };
+    renderApp();
+    return;
+  }
+
+  openRouterApiKey = key;
+  await writeSetting(apiKeyStorageKey, key);
+  overlayState = {
+    ...overlayState,
+    apiKeyDraft: "",
+    hasApiKey: true,
+    apiKeyMessage: "Key saved for this extension."
+  };
+  renderApp();
+  queueAnalyze();
+}
+
+async function clearApiKey() {
+  openRouterApiKey = null;
+  await removeSetting(apiKeyStorageKey);
+  overlayState = {
+    ...overlayState,
+    apiKeyDraft: "",
+    hasApiKey: false,
+    apiKeyMessage: "Key cleared."
+  };
+  renderApp();
+  queueAnalyze();
+}
+
+async function readSettings(): Promise<{ level: CorporateLevel; openRouterApiKey: string | null }> {
+  const values = await readSetting([levelStorageKey, apiKeyStorageKey]);
+  const levelValue = values[levelStorageKey];
+  const keyValue = values[apiKeyStorageKey];
+
+  return {
+    level:
+      levelValue === "associate" || levelValue === "manager" || levelValue === "ceo"
+        ? levelValue
+        : "manager",
+    openRouterApiKey: typeof keyValue === "string" && keyValue.trim() ? keyValue : null
+  };
+}
+
+async function readSetting(keys: string[]) {
+  if (globalThis.chrome?.storage?.local) {
+    return chrome.storage.local.get(keys);
+  }
+
+  return Object.fromEntries(keys.map((key) => [key, localStorage.getItem(key)]));
+}
+
+async function writeSetting(key: string, value: string) {
+  if (globalThis.chrome?.storage?.local) {
+    await chrome.storage.local.set({ [key]: value });
+    return;
+  }
+
+  localStorage.setItem(key, value);
+}
+
+async function removeSetting(key: string) {
+  if (globalThis.chrome?.storage?.local) {
+    await chrome.storage.local.remove(key);
+    return;
+  }
+
+  localStorage.removeItem(key);
 }
 
 function cacheKey(text: string) {

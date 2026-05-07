@@ -11,7 +11,8 @@ export const AnalyzeRequestSchema = z.object({
   windowText: z.string().min(1),
   windowStart: z.number().int().nonnegative(),
   cursorOffset: z.number().int().nonnegative(),
-  level: CorporateLevelSchema.default("manager")
+  level: CorporateLevelSchema.default("manager"),
+  openRouterApiKey: z.string().trim().min(1).optional()
 });
 
 export type AnalyzeRequest = z.infer<typeof AnalyzeRequestSchema>;

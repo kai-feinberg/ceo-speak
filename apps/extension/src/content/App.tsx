@@ -6,34 +6,69 @@ type AppProps = {
     position: { top: number; left: number } | null;
     isAnalyzing: boolean;
     level: CorporateLevel;
+    apiKeyDraft: string;
+    hasApiKey: boolean;
+    apiKeyMessage: string | null;
   };
   onApply: (suggestion: Suggestion) => void;
   onDismiss: (id: string) => void;
   onLevelChange: (level: CorporateLevel) => void;
+  onApiKeyDraftChange: (value: string) => void;
+  onApiKeySave: () => void;
+  onApiKeyClear: () => void;
 };
 
 const levels: CorporateLevel[] = ["associate", "manager", "ceo"];
 
-export function App({ state, onApply, onDismiss, onLevelChange }: AppProps) {
+export function App({
+  state,
+  onApply,
+  onDismiss,
+  onLevelChange,
+  onApiKeyDraftChange,
+  onApiKeySave,
+  onApiKeyClear
+}: AppProps) {
   const suggestion = state.activeSuggestion;
 
   return (
     <>
       <div className="ti-toolbar">
-        <span className="ti-toolbar__label">Corpo level</span>
-        <div className="ti-levels" role="group" aria-label="Corporate jargon level">
-          {levels.map((level) => (
-            <button
-              key={level}
-              className={level === state.level ? "ti-level ti-level--active" : "ti-level"}
-              type="button"
-              onClick={() => onLevelChange(level)}
-            >
-              {level}
-            </button>
-          ))}
+        <div className="ti-toolbar__row">
+          <span className="ti-toolbar__label">Corpo level</span>
+          <div className="ti-levels" role="group" aria-label="Corporate jargon level">
+            {levels.map((level) => (
+              <button
+                key={level}
+                className={level === state.level ? "ti-level ti-level--active" : "ti-level"}
+                type="button"
+                onClick={() => onLevelChange(level)}
+              >
+                {level}
+              </button>
+            ))}
+          </div>
+          {state.isAnalyzing ? <span className="ti-toolbar__status">Checking...</span> : null}
         </div>
-        {state.isAnalyzing ? <span className="ti-toolbar__status">Checking...</span> : null}
+        <div className="ti-key">
+          <input
+            aria-label="OpenRouter API key"
+            className="ti-key__input"
+            placeholder={state.hasApiKey ? "OpenRouter key saved" : "OpenRouter key"}
+            type="password"
+            value={state.apiKeyDraft}
+            onChange={(event) => onApiKeyDraftChange(event.currentTarget.value)}
+          />
+          <button className="ti-key__button" type="button" onClick={onApiKeySave}>
+            Save
+          </button>
+          {state.hasApiKey ? (
+            <button className="ti-key__button ti-key__button--quiet" type="button" onClick={onApiKeyClear}>
+              Clear
+            </button>
+          ) : null}
+        </div>
+        {state.apiKeyMessage ? <div className="ti-key__message">{state.apiKeyMessage}</div> : null}
       </div>
 
       {suggestion && state.position ? (
