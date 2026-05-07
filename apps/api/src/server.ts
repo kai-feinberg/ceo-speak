@@ -98,7 +98,7 @@ async function analyzeWithOpenRouter(
       {
         role: "system",
         content:
-          `You rewrite plain user text into corporate/consulting jargon. ${levelInstructions[request.level]} Return suggestions that transform ordinary wording into corporate speak. Use absolute character offsets based on the provided windowStart. Every suggestion must replace a contiguous exact substring from the input, and original must exactly match that substring. Prefer simple phrase substitutions like "meet" -> "touch base", "discuss" -> "double click on", "later today" -> "by end of day", and "agree" -> "get alignment".`
+          `You rewrite plain user text into corporate/consulting jargon for a joke/troll app. ${levelInstructions[request.level]} Return suggestions that transform ordinary wording into corporate speak. Make each message funny, punchy, and cooler than a normal grammar explanation while still explaining the change. Use absolute character offsets based on the provided windowStart. Every suggestion must replace a contiguous exact substring from the input, and original must exactly match that substring. Prefer simple phrase substitutions like "meet" -> "touch base", "discuss" -> "double click on", "later today" -> "by end of day", and "agree" -> "get alignment".`
       },
       {
         role: "user",
@@ -164,42 +164,42 @@ function analyzeWithRules(
 ): AnalyzeResponse {
   const fixtures = {
     associate: [
-      { original: "talk about", replacement: "discuss", message: "Make this a little more professional" },
-      { original: "later today", replacement: "by end of day", message: "Use workplace deadline phrasing" },
-      { original: "meet", replacement: "sync", message: "Add light corporate phrasing" },
-      { original: "agree", replacement: "align", message: "Use alignment-oriented phrasing" }
+      { original: "talk about", replacement: "discuss", message: "Tiny suit jacket upgrade. Still human, just expense-report adjacent." },
+      { original: "later today", replacement: "by end of day", message: "Adds deadline energy without summoning the calendar police." },
+      { original: "meet", replacement: "sync", message: "A humble glow-up from normal plans to workplace ritual." },
+      { original: "agree", replacement: "align", message: "Makes agreement sound like a tiny strategy summit." }
     ],
     manager: [
-      { original: "talk about", replacement: "double click on", message: "Make this more consulting-forward" },
-      { original: "later today", replacement: "by end of day", message: "Add deadline-coded corporate phrasing" },
-      { original: "meet", replacement: "touch base", message: "Shift this into corporate speak" },
-      { original: "agree", replacement: "get alignment", message: "Use alignment-oriented phrasing" }
+      { original: "talk about", replacement: "double click on", message: "Instant consulting cologne. Now it smells billable." },
+      { original: "later today", replacement: "by end of day", message: "Turns a time into a managerial drumbeat." },
+      { original: "meet", replacement: "touch base", message: "Nobody meets anymore. We touch bases like champions." },
+      { original: "agree", replacement: "get alignment", message: "Consensus, but with a lanyard and a parking-lot doc." }
     ],
     ceo: [
       {
         original: "talk about",
         replacement: "double click on the strategic implications of",
-        message: "Escalate this into executive strategy language"
+        message: "Launches this sentence into executive orbit. Oxygen optional."
       },
       {
         original: "later today",
         replacement: "by end of day to maintain cross-functional momentum",
-        message: "Maximize executive urgency"
+        message: "Adds urgency, momentum, and the faint sound of a board deck opening."
       },
       {
         original: "meet",
         replacement: "convene a stakeholder alignment touchpoint",
-        message: "Turn this into CEO-grade calendar language"
+        message: "Transforms a basic meetup into a calendar event with a valuation."
       },
       {
         original: "agree",
         replacement: "secure strategic alignment",
-        message: "Make consensus sound executive"
+        message: "Agreement is nice. Strategic alignment wears sunglasses indoors."
       },
       {
         original: "plan",
         replacement: "north-star roadmap",
-        message: "Add executive roadmap framing"
+        message: "A normal plan, upgraded into something that can survive a keynote."
       }
     ]
   } satisfies Record<typeof level, Array<{ original: string; replacement: string; message: string }>>;

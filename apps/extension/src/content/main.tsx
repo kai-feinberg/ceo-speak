@@ -17,6 +17,7 @@ type OverlayState = {
   apiKeyDraft: string;
   hasApiKey: boolean;
   apiKeyMessage: string | null;
+  isSettingsOpen: boolean;
 };
 
 const apiUrl = "http://127.0.0.1:8787/api/analyze";
@@ -42,7 +43,8 @@ let overlayState: OverlayState = {
   level: "manager",
   apiKeyDraft: "",
   hasApiKey: false,
-  apiKeyMessage: null
+  apiKeyMessage: null,
+  isSettingsOpen: false
 };
 
 void init();
@@ -108,82 +110,170 @@ function ensureUi() {
       right: 18px;
       top: 18px;
       z-index: 2147483647;
-      border: 1px solid rgb(30 30 30 / 14%);
+      border: 1px solid rgb(255 255 255 / 45%);
       border-radius: 8px;
-      background: #fff;
+      background:
+        linear-gradient(135deg, rgb(255 255 255 / 94%), rgb(255 246 214 / 95%)),
+        #fff;
       color: #171717;
-      padding: 8px;
+      padding: 7px;
       font: 12px/1.2 ui-sans-serif, system-ui, sans-serif;
-      box-shadow: 0 10px 28px rgb(0 0 0 / 20%);
+      box-shadow: 0 18px 40px rgb(101 64 12 / 22%);
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      gap: 7px;
-      width: 360px;
+      gap: 6px;
+      width: 350px;
       max-width: calc(100vw - 36px);
     }
     .ti-toolbar__row {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
     }
-    .ti-toolbar__label {
-      color: #666;
+    .ti-brand {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 112px;
+    }
+    .ti-brand__mark {
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: #111827;
+      color: #facc15;
+      font: 900 14px/1 ui-sans-serif, system-ui, sans-serif;
+    }
+    .ti-brand__text {
+      color: #171717;
       font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: .08em;
+      letter-spacing: 0;
     }
     .ti-toolbar__status {
-      color: #476cdb;
+      border: 1px solid rgb(17 24 39 / 10%);
+      border-radius: 6px;
+      background: rgb(255 255 255 / 62%);
+      color: #7c2d12;
+      padding: 5px 7px;
       font-weight: 800;
+      text-align: center;
+    }
+    .ti-toolbar__status--active {
+      color: #b91c1c;
+      background: #fff1f2;
     }
     .ti-levels {
       display: flex;
       gap: 3px;
-      border: 1px solid rgb(24 24 24 / 12%);
+      flex: 1;
+      border: 1px solid rgb(124 45 18 / 16%);
       border-radius: 7px;
       padding: 2px;
-      background: #f5f5f5;
+      background: rgb(255 255 255 / 58%);
     }
     .ti-level {
       border: 0;
       border-radius: 5px;
       background: transparent;
-      color: #555;
+      color: #713f12;
       padding: 5px 7px;
       font: 700 12px/1 ui-sans-serif, system-ui, sans-serif;
       text-transform: capitalize;
       cursor: pointer;
+      flex: 1;
     }
     .ti-level--active {
-      background: #181818;
+      background: #e11d48;
       color: #fff;
+      box-shadow: 0 8px 16px rgb(225 29 72 / 24%);
+    }
+    .ti-icon-button,
+    .ti-close-button {
+      border: 0;
+      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      background: #111827;
+      color: #fff;
+      font: 900 14px/1 ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    .ti-icon-button--active {
+      background: #e11d48;
+    }
+    .ti-settings {
+      position: fixed;
+      right: 18px;
+      top: 104px;
+      z-index: 2147483647;
+      width: 350px;
+      max-width: calc(100vw - 36px);
+      border: 1px solid rgb(17 24 39 / 14%);
+      border-radius: 8px;
+      background: #fffaf0;
+      color: #171717;
+      padding: 12px;
+      font: 12px/1.25 ui-sans-serif, system-ui, sans-serif;
+      box-shadow: 0 24px 54px rgb(101 64 12 / 24%);
+    }
+    .ti-settings__header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .ti-settings__eyebrow {
+      color: #be123c;
+      font: 900 10px/1 ui-sans-serif, system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      margin-bottom: 4px;
+    }
+    .ti-settings__title {
+      font: 900 19px/1.05 ui-sans-serif, system-ui, sans-serif;
+      color: #111827;
+    }
+    .ti-settings__actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
     }
     .ti-key {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
-      gap: 5px;
+      display: block;
+    }
+    .ti-key__label {
+      display: block;
+      margin-bottom: 5px;
+      color: #713f12;
+      font-weight: 800;
     }
     .ti-key__input {
+      box-sizing: border-box;
+      width: 100%;
       min-width: 0;
-      border: 1px solid rgb(24 24 24 / 16%);
+      border: 1px solid rgb(124 45 18 / 22%);
       border-radius: 6px;
-      padding: 7px 8px;
+      padding: 9px 10px;
       color: #171717;
       background: #fff;
-      font: 12px/1 ui-sans-serif, system-ui, sans-serif;
+      font: 12px/1.1 ui-sans-serif, system-ui, sans-serif;
       outline: none;
     }
     .ti-key__input:focus {
-      border-color: #476cdb;
-      box-shadow: 0 0 0 2px rgb(71 108 219 / 16%);
+      border-color: #e11d48;
+      box-shadow: 0 0 0 3px rgb(225 29 72 / 16%);
     }
     .ti-key__button {
       border: 0;
       border-radius: 6px;
       min-height: 30px;
-      padding: 6px 9px;
-      background: #181818;
+      padding: 8px 10px;
+      background: #111827;
       color: #fff;
       font: 800 12px/1 ui-sans-serif, system-ui, sans-serif;
       cursor: pointer;
@@ -193,33 +283,37 @@ function ensureUi() {
       color: #555;
     }
     .ti-key__message {
-      color: #476cdb;
-      font: 700 11px/1.2 ui-sans-serif, system-ui, sans-serif;
+      margin-top: 8px;
+      color: #be123c;
+      font: 800 11px/1.25 ui-sans-serif, system-ui, sans-serif;
     }
     .ti-popover {
       position: fixed;
       top: 0;
       left: 0;
       z-index: 2147483647;
-      width: 240px;
-      border: 1px solid rgb(24 24 24 / 14%);
+      width: 260px;
+      border: 1px solid rgb(251 191 36 / 45%);
       border-radius: 8px;
-      background: #fff;
+      background: #111827;
       color: #171717;
-      padding: 10px;
+      padding: 12px;
       font: 13px/1.35 ui-sans-serif, system-ui, sans-serif;
-      box-shadow: 0 18px 48px rgb(0 0 0 / 18%);
+      box-shadow: 0 20px 52px rgb(17 24 39 / 35%);
     }
     .ti-popover__meta {
-      color: #476cdb;
+      color: #facc15;
       font-size: 11px;
       font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: .08em;
+      letter-spacing: 0;
       margin-bottom: 5px;
+      padding-right: 30px;
     }
     .ti-popover__message {
+      color: #fff7ed;
       margin-bottom: 8px;
+      padding-right: 18px;
     }
     .ti-suggestion,
     .ti-dismiss {
@@ -232,14 +326,23 @@ function ensureUi() {
     }
     .ti-suggestion {
       width: 100%;
-      background: #e9eeff;
-      color: #183a9e;
+      background: #facc15;
+      color: #111827;
       text-align: left;
-      margin-bottom: 6px;
+      box-shadow: inset 0 -2px 0 rgb(17 24 39 / 18%);
     }
     .ti-dismiss {
-      background: transparent;
-      color: #666;
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      display: grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      min-height: 26px;
+      padding: 0;
+      background: rgb(255 255 255 / 12%);
+      color: #fff;
     }
   `;
   const mount = document.createElement("div");
@@ -435,11 +538,31 @@ function renderApp() {
       onApply={applyActiveSuggestion}
       onDismiss={dismissSuggestion}
       onLevelChange={changeLevel}
+      onSettingsToggle={toggleSettings}
+      onSettingsClose={closeSettings}
       onApiKeyDraftChange={changeApiKeyDraft}
       onApiKeySave={saveApiKey}
       onApiKeyClear={clearApiKey}
     />
   );
+}
+
+function toggleSettings() {
+  overlayState = {
+    ...overlayState,
+    isSettingsOpen: !overlayState.isSettingsOpen,
+    apiKeyMessage: null
+  };
+  renderApp();
+}
+
+function closeSettings() {
+  overlayState = {
+    ...overlayState,
+    isSettingsOpen: false,
+    apiKeyMessage: null
+  };
+  renderApp();
 }
 
 async function changeLevel(level: CorporateLevel) {
@@ -472,7 +595,7 @@ function changeApiKeyDraft(value: string) {
 async function saveApiKey() {
   const key = overlayState.apiKeyDraft.trim();
   if (!key) {
-    overlayState = { ...overlayState, apiKeyMessage: "Paste an OpenRouter key first." };
+    overlayState = { ...overlayState, isSettingsOpen: true, apiKeyMessage: "Paste the magic key first, boss." };
     renderApp();
     return;
   }
@@ -483,7 +606,7 @@ async function saveApiKey() {
     ...overlayState,
     apiKeyDraft: "",
     hasApiKey: true,
-    apiKeyMessage: "Key saved for this extension."
+    apiKeyMessage: "Key saved. The synergy cannon is loaded."
   };
   renderApp();
   queueAnalyze();
@@ -496,7 +619,7 @@ async function clearApiKey() {
     ...overlayState,
     apiKeyDraft: "",
     hasApiKey: false,
-    apiKeyMessage: "Key cleared."
+    apiKeyMessage: "Key cleared. Back to locally sourced nonsense."
   };
   renderApp();
   queueAnalyze();

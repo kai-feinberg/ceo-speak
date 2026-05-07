@@ -9,10 +9,13 @@ type AppProps = {
     apiKeyDraft: string;
     hasApiKey: boolean;
     apiKeyMessage: string | null;
+    isSettingsOpen: boolean;
   };
   onApply: (suggestion: Suggestion) => void;
   onDismiss: (id: string) => void;
   onLevelChange: (level: CorporateLevel) => void;
+  onSettingsToggle: () => void;
+  onSettingsClose: () => void;
   onApiKeyDraftChange: (value: string) => void;
   onApiKeySave: () => void;
   onApiKeyClear: () => void;
@@ -25,6 +28,8 @@ export function App({
   onApply,
   onDismiss,
   onLevelChange,
+  onSettingsToggle,
+  onSettingsClose,
   onApiKeyDraftChange,
   onApiKeySave,
   onApiKeyClear
@@ -35,7 +40,10 @@ export function App({
     <>
       <div className="ti-toolbar">
         <div className="ti-toolbar__row">
-          <span className="ti-toolbar__label">Corpo level</span>
+          <div className="ti-brand" aria-label="CEO Speak">
+            <span className="ti-brand__mark">$</span>
+            <span className="ti-brand__text">CEO Speak</span>
+          </div>
           <div className="ti-levels" role="group" aria-label="Corporate jargon level">
             {levels.map((level) => (
               <button
@@ -48,28 +56,56 @@ export function App({
               </button>
             ))}
           </div>
-          {state.isAnalyzing ? <span className="ti-toolbar__status">Checking...</span> : null}
-        </div>
-        <div className="ti-key">
-          <input
-            aria-label="OpenRouter API key"
-            className="ti-key__input"
-            placeholder={state.hasApiKey ? "OpenRouter key saved" : "OpenRouter key"}
-            type="password"
-            value={state.apiKeyDraft}
-            onChange={(event) => onApiKeyDraftChange(event.currentTarget.value)}
-          />
-          <button className="ti-key__button" type="button" onClick={onApiKeySave}>
-            Save
+          <button
+            className={state.isSettingsOpen ? "ti-icon-button ti-icon-button--active" : "ti-icon-button"}
+            type="button"
+            aria-label="Open settings"
+            title="Open settings"
+            onClick={onSettingsToggle}
+          >
+            &#9881;
           </button>
-          {state.hasApiKey ? (
-            <button className="ti-key__button ti-key__button--quiet" type="button" onClick={onApiKeyClear}>
-              Clear
-            </button>
-          ) : null}
         </div>
-        {state.apiKeyMessage ? <div className="ti-key__message">{state.apiKeyMessage}</div> : null}
+        <div className={state.isAnalyzing ? "ti-toolbar__status ti-toolbar__status--active" : "ti-toolbar__status"}>
+          {state.isAnalyzing ? "Boiling ocean..." : state.hasApiKey ? "AI nonsense engine armed" : "Local chaos mode"}
+        </div>
       </div>
+
+      {state.isSettingsOpen ? (
+        <div className="ti-settings" role="dialog" aria-label="CEO Speak settings">
+          <div className="ti-settings__header">
+            <div>
+              <div className="ti-settings__eyebrow">Settings</div>
+              <div className="ti-settings__title">Jargon fuel tank</div>
+            </div>
+            <button className="ti-close-button" type="button" aria-label="Close settings" onClick={onSettingsClose}>
+              x
+            </button>
+          </div>
+          <label className="ti-key">
+            <span className="ti-key__label">OpenRouter key</span>
+            <input
+              aria-label="OpenRouter API key"
+              className="ti-key__input"
+              placeholder={state.hasApiKey ? "Key saved. The board is listening." : "sk-or-v1-..."}
+              type="password"
+              value={state.apiKeyDraft}
+              onChange={(event) => onApiKeyDraftChange(event.currentTarget.value)}
+            />
+          </label>
+          <div className="ti-settings__actions">
+            <button className="ti-key__button" type="button" onClick={onApiKeySave}>
+              Fuel the machine
+            </button>
+            {state.hasApiKey ? (
+              <button className="ti-key__button ti-key__button--quiet" type="button" onClick={onApiKeyClear}>
+                Drain it
+              </button>
+            ) : null}
+          </div>
+          {state.apiKeyMessage ? <div className="ti-key__message">{state.apiKeyMessage}</div> : null}
+        </div>
+      ) : null}
 
       {suggestion && state.position ? (
         <div
@@ -78,13 +114,13 @@ export function App({
             transform: `translate(${Math.round(state.position.left)}px, ${Math.round(state.position.top)}px)`
           }}
         >
+          <button className="ti-dismiss" type="button" aria-label="Dismiss suggestion" onClick={() => onDismiss(suggestion.id)}>
+            x
+          </button>
           <div className="ti-popover__meta">{suggestion.type}</div>
           <div className="ti-popover__message">{suggestion.message}</div>
           <button className="ti-suggestion" type="button" onClick={() => onApply(suggestion)}>
             {suggestion.replacement}
-          </button>
-          <button className="ti-dismiss" type="button" onClick={() => onDismiss(suggestion.id)}>
-            Dismiss
           </button>
         </div>
       ) : null}
