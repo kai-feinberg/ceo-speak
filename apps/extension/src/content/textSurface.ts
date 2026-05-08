@@ -5,7 +5,7 @@ export type TextSurface = {
   getText: () => string;
   getCursorOffset: () => number;
   getSuggestionClientRects: (suggestion: Suggestion) => DOMRect[];
-  replaceRange: (start: number, end: number, replacement: string) => void;
+  replaceRange: (start: number, end: number, replacement: string) => boolean;
   focus: () => void;
 };
 
@@ -49,6 +49,7 @@ function createTextareaSurface(textarea: HTMLTextAreaElement): TextSurface {
       const cursor = start + replacement.length;
       textarea.setSelectionRange(cursor, cursor);
       textarea.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertReplacementText" }));
+      return textarea.value === nextValue;
     },
     focus: () => textarea.focus()
   };
@@ -57,29 +58,41 @@ function createTextareaSurface(textarea: HTMLTextAreaElement): TextSurface {
 function createContentEditableSurface(element: HTMLElement): TextSurface {
   return {
     element,
-    getText: () => element.textContent ?? "",
+    getText: () => getEditableText(element),
     getCursorOffset: () => getSelectionOffset(element),
     getSuggestionClientRects: (suggestion) => {
       const range = createRangeForOffsets(element, suggestion.start, suggestion.end);
       if (!range) return [];
       const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+      if (!rects.length) {
+        const rect = range.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) rects.push(rect);
+      }
       range.detach();
       return rects;
     },
     replaceRange: (start, end, replacement) => {
+      const currentText = getEditableText(element);
+      const expectedText = `${currentText.slice(0, start)}${replacement}${currentText.slice(end)}`;
+      if (currentText.slice(start, end) === replacement) return true;
       const range = createRangeForOffsets(element, start, end);
-      if (!range) return;
+      if (!range) return false;
+      element.focus({ preventScroll: true });
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+
       range.deleteContents();
       const node = document.createTextNode(replacement);
       range.insertNode(node);
       range.setStartAfter(node);
       range.collapse(true);
-
-      const selection = window.getSelection();
       selection?.removeAllRanges();
       selection?.addRange(range);
+
       element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertReplacementText" }));
       range.detach();
+      return getEditableText(element) === expectedText;
     },
     focus: () => element.focus()
   };
@@ -148,5 +161,9 @@ function findTextPoint(container: HTMLElement, targetOffset: number) {
 }
 
 function textLength(container: HTMLElement) {
-  return container.textContent?.length ?? 0;
+  return getEditableText(container).length;
+}
+
+function getEditableText(element: HTMLElement) {
+  return element.textContent ?? "";
 }

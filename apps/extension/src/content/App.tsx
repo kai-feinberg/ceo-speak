@@ -9,16 +9,21 @@ type AppProps = {
     apiKeyDraft: string;
     hasApiKey: boolean;
     apiKeyMessage: string | null;
+    analysisMessage: string | null;
+    diagnosticText: string | null;
     isSettingsOpen: boolean;
+    isEnabled: boolean;
   };
   onApply: (suggestion: Suggestion) => void;
   onDismiss: (id: string) => void;
   onLevelChange: (level: CorporateLevel) => void;
   onSettingsToggle: () => void;
   onSettingsClose: () => void;
+  onEnabledToggle: () => void;
   onApiKeyDraftChange: (value: string) => void;
   onApiKeySave: () => void;
   onApiKeyClear: () => void;
+  onDiagnosticCopy: () => void;
 };
 
 const levels: CorporateLevel[] = ["associate", "manager", "ceo"];
@@ -35,12 +40,20 @@ export function App({
   onLevelChange,
   onSettingsToggle,
   onSettingsClose,
+  onEnabledToggle,
   onApiKeyDraftChange,
   onApiKeySave,
-  onApiKeyClear
+  onApiKeyClear,
+  onDiagnosticCopy
 }: AppProps) {
   const suggestion = state.activeSuggestion;
-  const status = state.isAnalyzing ? "💰 Boiling the ocean..." : idleStatusByLevel[state.level];
+  const status = !state.isEnabled
+    ? "Parked until you turn it back on"
+    : !state.hasApiKey
+    ? "Key needs to be connected"
+    : state.isAnalyzing
+      ? "💰 Boiling the ocean..."
+      : state.analysisMessage ?? idleStatusByLevel[state.level];
 
   return (
     <>
@@ -52,6 +65,9 @@ export function App({
             <span className="ti-brand__cash">$$$</span>
           </div>
           <div className={state.isAnalyzing ? "ti-toolbar__status ti-toolbar__status--active" : "ti-toolbar__status"}>
+            <span className={state.hasApiKey ? "ti-status-dot ti-status-dot--connected" : "ti-status-dot"} aria-hidden="true">
+              {state.hasApiKey ? "✓" : "!"}
+            </span>
             {status}
           </div>
           <button
@@ -64,6 +80,14 @@ export function App({
             ⚙️
           </button>
         </div>
+        <button
+          className={state.isEnabled ? "ti-power-button ti-power-button--on" : "ti-power-button"}
+          type="button"
+          aria-pressed={state.isEnabled}
+          onClick={onEnabledToggle}
+        >
+          {state.isEnabled ? "Turn off" : "Turn on"}
+        </button>
         <div className="ti-mode-row">
           <div className="ti-mode-row__label">Skill level</div>
           <div className="ti-levels" role="group" aria-label="Corporate jargon level">
@@ -98,7 +122,7 @@ export function App({
               aria-label="OpenRouter API key"
               className="ti-key__input"
               placeholder={state.hasApiKey ? "Key saved. The board is listening." : "sk-or-v1-..."}
-              type="password"
+              type="text"
               value={state.apiKeyDraft}
               onChange={(event) => onApiKeyDraftChange(event.currentTarget.value)}
             />
@@ -114,6 +138,17 @@ export function App({
             ) : null}
           </div>
           {state.apiKeyMessage ? <div className="ti-key__message">{state.apiKeyMessage}</div> : null}
+          {state.diagnosticText ? (
+            <div className="ti-diagnostics">
+              <div className="ti-diagnostics__header">
+                <span>Latest diagnostic</span>
+                <button className="ti-key__button ti-key__button--quiet" type="button" onClick={onDiagnosticCopy}>
+                  Copy
+                </button>
+              </div>
+              <textarea className="ti-diagnostics__text" readOnly value={state.diagnosticText} />
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -129,7 +164,12 @@ export function App({
           </button>
           <div className="ti-popover__meta">{suggestion.type}</div>
           <div className="ti-popover__message">{suggestion.message}</div>
-          <button className="ti-suggestion" type="button" onClick={() => onApply(suggestion)}>
+          <button
+            className="ti-suggestion"
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onApply(suggestion)}
+          >
             {suggestion.replacement}
           </button>
         </div>

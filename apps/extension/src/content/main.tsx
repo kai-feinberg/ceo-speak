@@ -3,6 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import {
   AnalyzeResponseSchema,
   extractFocusedWindow,
+  type AnalyzeResponse,
+  type AnalyzeRequest,
   type CorporateLevel,
   type Suggestion
 } from "@text-intel/shared";
@@ -23,15 +25,20 @@ type OverlayState = {
   apiKeyDraft: string;
   hasApiKey: boolean;
   apiKeyMessage: string | null;
+  analysisMessage: string | null;
+  diagnosticText: string | null;
   isSettingsOpen: boolean;
+  isEnabled: boolean;
 };
 
-const apiUrl = "http://127.0.0.1:8787/api/analyze";
+const openRouterApiUrl = "https://openrouter.ai/api/v1/chat/completions";
+const openRouterModel = "openai/gpt-4o-mini";
 const levelStorageKey = "text-intelligence-corporate-level";
 const apiKeyStorageKey = "text-intelligence-openrouter-key";
+const enabledStorageKey = "text-intelligence-enabled";
 const cacheStorageKey = "text-intelligence-suggestion-cache";
 const documentStyleId = "text-intelligence-document-styles";
-const debounceMs = 700;
+const debounceMs = 4000;
 let activeTextarea: HTMLTextAreaElement | null = null;
 let activeSurface: TextSurface | null = null;
 let openRouterApiKey: string | null = null;
@@ -53,7 +60,10 @@ let overlayState: OverlayState = {
   apiKeyDraft: "",
   hasApiKey: false,
   apiKeyMessage: null,
-  isSettingsOpen: false
+  analysisMessage: null,
+  diagnosticText: null,
+  isSettingsOpen: false,
+  isEnabled: true
 };
 
 void init();
@@ -64,7 +74,8 @@ async function init() {
   overlayState = {
     ...overlayState,
     level: settings.level,
-    hasApiKey: Boolean(settings.openRouterApiKey)
+    hasApiKey: Boolean(settings.openRouterApiKey),
+    isEnabled: settings.isEnabled
   };
 
   document.addEventListener("focusin", (event) => {
@@ -98,6 +109,7 @@ function attachToEditable(element: HTMLElement) {
   surface.element.addEventListener("click", renderMarkers);
   surface.element.addEventListener("keyup", renderMarkers);
   window.addEventListener("resize", renderMarkers);
+  window.addEventListener("scroll", renderMarkers, true);
   renderMarkers();
   queueAnalyze();
 }
@@ -109,6 +121,7 @@ function detachSurfaceListeners() {
   activeSurface.element.removeEventListener("click", renderMarkers);
   activeSurface.element.removeEventListener("keyup", renderMarkers);
   window.removeEventListener("resize", renderMarkers);
+  window.removeEventListener("scroll", renderMarkers, true);
 }
 
 function watchForGmailComposeBodies() {
@@ -207,11 +220,28 @@ function ensureUi() {
       font: 900 11px/1 ui-sans-serif, system-ui, sans-serif;
       text-align: center;
       white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     }
     .ti-toolbar__status--active {
       color: #166534;
       background: #dcfce7;
       box-shadow: inset 0 -2px 0 rgb(22 101 52 / 14%);
+    }
+    .ti-status-dot {
+      display: inline-grid;
+      place-items: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      background: #e11d48;
+      color: #fff;
+      font: 900 11px/1 ui-sans-serif, system-ui, sans-serif;
+    }
+    .ti-status-dot--connected {
+      background: #16a34a;
     }
     .ti-mode-row {
       border: 1px solid rgb(124 45 18 / 14%);
@@ -260,6 +290,20 @@ function ensureUi() {
     }
     .ti-icon-button--active {
       background: #16a34a;
+    }
+    .ti-power-button {
+      border: 1px solid rgb(17 24 39 / 14%);
+      border-radius: 6px;
+      min-height: 32px;
+      background: #fff;
+      color: #713f12;
+      font: 900 12px/1 ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    .ti-power-button--on {
+      background: #111827;
+      border-color: #111827;
+      color: #fff;
     }
     .ti-settings {
       position: fixed;
@@ -342,6 +386,35 @@ function ensureUi() {
       margin-top: 8px;
       color: #be123c;
       font: 800 11px/1.25 ui-sans-serif, system-ui, sans-serif;
+    }
+    .ti-diagnostics {
+      margin-top: 12px;
+      border-top: 1px solid rgb(124 45 18 / 16%);
+      padding-top: 10px;
+    }
+    .ti-diagnostics__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: #713f12;
+      font: 900 10px/1 ui-sans-serif, system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      margin-bottom: 7px;
+    }
+    .ti-diagnostics__text {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 118px;
+      resize: vertical;
+      border: 1px solid rgb(124 45 18 / 22%);
+      border-radius: 6px;
+      background: #fff;
+      color: #171717;
+      padding: 9px;
+      font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
     }
     .ti-popover {
       position: fixed;
@@ -469,7 +542,6 @@ function ensureDocumentStyles() {
     }
 
     .ti-marker--rect {
-      border-bottom: 2px wavy #e24646;
       color: transparent;
     }
   `;
@@ -494,21 +566,61 @@ function onInput() {
 
 function queueAnalyze() {
   window.clearTimeout(analyzeTimer);
-  overlayState = { ...overlayState, isAnalyzing: true };
+  if (!overlayState.isEnabled) {
+    suggestions = [];
+    overlayState = {
+      ...overlayState,
+      activeSuggestion: null,
+      position: null,
+      isAnalyzing: false,
+      analysisMessage: null
+    };
+    renderApp();
+    renderMarkers();
+    return;
+  }
+  if (!openRouterApiKey) {
+    suggestions = [];
+    overlayState = {
+      ...overlayState,
+      activeSuggestion: null,
+      position: null,
+      isAnalyzing: false,
+      analysisMessage: null
+    };
+    if (activeSurface) writeCachedSuggestions(activeSurface.getText(), suggestions);
+    renderApp();
+    renderMarkers();
+    return;
+  }
+  overlayState = { ...overlayState, isAnalyzing: true, analysisMessage: null };
   renderApp();
   analyzeTimer = window.setTimeout(analyze, debounceMs);
 }
 
 async function analyze() {
   if (!activeSurface) return;
+  if (!overlayState.isEnabled) {
+    overlayState = { ...overlayState, isAnalyzing: false };
+    renderApp();
+    renderMarkers();
+    return;
+  }
+  if (!openRouterApiKey) {
+    overlayState = { ...overlayState, isAnalyzing: false };
+    renderApp();
+    renderMarkers();
+    return;
+  }
   const surface = activeSurface;
   const text = surface.getText();
   const currentRequestId = ++requestId;
   const request = {
     ...extractFocusedWindow(text, surface.getCursorOffset()),
     level: overlayState.level,
-    ...(openRouterApiKey ? { openRouterApiKey } : {})
+    openRouterApiKey
   };
+  const startedAt = new Date().toISOString();
 
   if (!request.windowText.trim()) {
     suggestions = [];
@@ -520,14 +632,7 @@ async function analyze() {
   }
 
   try {
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request)
-    });
-
-    if (!response.ok) throw new Error(`Analyze failed: ${response.status}`);
-    const parsed = AnalyzeResponseSchema.parse(await response.json());
+    const parsed = reconcileAnalyzeResponse(request, await analyzeWithOpenRouter(request, openRouterApiKey));
     if (currentRequestId !== requestId || activeSurface !== surface) return;
     suggestions = mergeSuggestions(
       surface.getText(),
@@ -536,9 +641,26 @@ async function analyze() {
         (suggestion) => !dismissedIds.has(suggestion.id) && !appliedIds.has(suggestion.id)
       )
     );
+    overlayState = {
+      ...overlayState,
+      analysisMessage: suggestions.length ? null : "No jargon targets found"
+    };
     writeCachedSuggestions(surface.getText(), suggestions);
   } catch (error) {
     console.error(error);
+    const message = error instanceof Error ? error.message : "Analyze failed";
+    const networkDiagnostics = await collectNetworkDiagnostics();
+    overlayState = {
+      ...overlayState,
+      analysisMessage: message,
+      diagnosticText: createDiagnosticText({
+        message,
+        startedAt,
+        text,
+        request,
+        networkDiagnostics
+      })
+    };
   } finally {
     if (currentRequestId === requestId) {
       overlayState = { ...overlayState, isAnalyzing: false };
@@ -624,7 +746,8 @@ function renderTextareaMarkers() {
 
 function renderContentEditableMarkers() {
   if (!activeSurface || !mirror || !markerLayer) return;
-  const rect = activeSurface.element.getBoundingClientRect();
+  const surface = activeSurface;
+  const rect = surface.element.getBoundingClientRect();
 
   Object.assign(mirror.style, {
     position: "fixed",
@@ -656,27 +779,75 @@ function renderContentEditableMarkers() {
   if (rect.bottom < 0 || rect.top > window.innerHeight) return;
 
   const visibleSuggestions = suggestions.filter((suggestion) => !dismissedIds.has(suggestion.id));
-  for (const suggestion of visibleSuggestions) {
-    const rects = activeSurface.getSuggestionClientRects(suggestion);
-    for (const markerRect of rects) {
-      const mark = document.createElement("span");
-      mark.className = "ti-marker ti-marker--rect";
-      mark.dataset.suggestionId = suggestion.id;
-      Object.assign(mark.style, {
-        position: "fixed",
-        left: `${markerRect.left}px`,
-        top: `${markerRect.bottom - 2}px`,
-        width: `${markerRect.width}px`,
-        height: "8px",
-        borderBottom: "2px wavy #e24646",
-        cursor: "pointer",
-        pointerEvents: "auto"
-      });
-      mark.addEventListener("mouseenter", () => showSuggestionFromRect(suggestion, markerRect));
-      mark.addEventListener("click", () => showSuggestionFromRect(suggestion, markerRect));
-      markerLayer.append(mark);
+  visibleSuggestions.forEach((suggestion, index) => {
+    const rects = surface.getSuggestionClientRects(suggestion);
+
+    if (!rects.length) {
+      renderFallbackContentEditableMarker(suggestion, rect, index);
+      return;
     }
-  }
+
+    for (const markerRect of rects) renderContentEditableMarker(suggestion, markerRect);
+  });
+}
+
+function renderContentEditableMarker(suggestion: Suggestion, markerRect: DOMRect) {
+  if (!markerLayer) return;
+  const mark = document.createElement("span");
+  mark.className = "ti-marker ti-marker--rect";
+  mark.dataset.suggestionId = suggestion.id;
+  Object.assign(mark.style, {
+    position: "fixed",
+    left: `${markerRect.left}px`,
+    top: `${markerRect.bottom - 5}px`,
+    width: `${Math.max(markerRect.width, 10)}px`,
+    height: "12px",
+    backgroundImage:
+      "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='6' viewBox='0 0 12 6'%3E%3Cpath d='M0 3 Q3 0 6 3 T12 3' fill='none' stroke='%23e11d48' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E\")",
+    backgroundRepeat: "repeat-x",
+    backgroundPosition: "left bottom",
+    backgroundSize: "12px 6px",
+    cursor: "pointer",
+    pointerEvents: "auto"
+  });
+  mark.addEventListener("mouseenter", () => showSuggestionFromRect(suggestion, markerRect));
+  mark.addEventListener("click", () => showSuggestionFromRect(suggestion, markerRect));
+  markerLayer.append(mark);
+}
+
+function renderFallbackContentEditableMarker(suggestion: Suggestion, editorRect: DOMRect, index: number) {
+  if (!markerLayer) return;
+  const mark = document.createElement("button");
+  mark.className = "ti-marker-fallback";
+  mark.type = "button";
+  mark.textContent = suggestion.original;
+  const fallbackRect = new DOMRect(
+    Math.min(editorRect.left + 8, window.innerWidth - 180),
+    Math.min(editorRect.top + 8 + index * 28, window.innerHeight - 44),
+    160,
+    24
+  );
+  Object.assign(mark.style, {
+    position: "fixed",
+    left: `${fallbackRect.left}px`,
+    top: `${fallbackRect.top}px`,
+    maxWidth: "160px",
+    minHeight: "24px",
+    border: "1px solid rgb(225 29 72 / 35%)",
+    borderRadius: "6px",
+    background: "#fff7ed",
+    color: "#9f1239",
+    font: "800 11px/1 ui-sans-serif, system-ui, sans-serif",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    cursor: "pointer",
+    pointerEvents: "auto",
+    zIndex: "2147483647"
+  });
+  mark.addEventListener("mouseenter", () => showSuggestionFromRect(suggestion, fallbackRect));
+  mark.addEventListener("click", () => showSuggestionFromRect(suggestion, fallbackRect));
+  markerLayer.append(mark);
 }
 
 function showSuggestion(suggestion: Suggestion, marker: HTMLElement) {
@@ -699,7 +870,28 @@ function showSuggestionFromRect(suggestion: Suggestion, rect: DOMRect) {
 function applyActiveSuggestion(suggestion: Suggestion) {
   if (!activeSurface) return;
   const currentText = activeSurface.getText();
+  if (currentText.slice(suggestion.start, suggestion.end) !== suggestion.original) {
+    suggestions = suggestions.filter((item) => item.id !== suggestion.id);
+    overlayState = { ...overlayState, activeSuggestion: null, position: null };
+    writeCachedSuggestions(currentText, suggestions);
+    renderApp();
+    renderMarkers();
+    return;
+  }
   const delta = suggestion.replacement.length - (suggestion.end - suggestion.start);
+  const didReplace = activeSurface.replaceRange(suggestion.start, suggestion.end, suggestion.replacement);
+  if (!didReplace) {
+    console.warn("CEO Speak replacement did not land", {
+      suggestion,
+      currentText,
+      currentSlice: currentText.slice(suggestion.start, suggestion.end),
+      afterText: activeSurface.getText()
+    });
+    activeSurface.focus();
+    renderMarkers();
+    return;
+  }
+
   appliedIds.add(suggestion.id);
   suggestions = suggestions
     .filter((item) => item.id !== suggestion.id)
@@ -709,7 +901,6 @@ function applyActiveSuggestion(suggestion: Suggestion) {
         : item
   );
   overlayState = { ...overlayState, activeSuggestion: null, position: null };
-  activeSurface.replaceRange(suggestion.start, suggestion.end, suggestion.replacement);
   writeCachedSuggestions(
     `${currentText.slice(0, suggestion.start)}${suggestion.replacement}${currentText.slice(suggestion.end)}`,
     suggestions
@@ -723,6 +914,7 @@ function dismissSuggestion(id: string) {
   dismissedIds.add(id);
   suggestions = suggestions.filter((suggestion) => suggestion.id !== id);
   overlayState = { ...overlayState, activeSuggestion: null, position: null };
+  if (activeSurface) writeCachedSuggestions(activeSurface.getText(), suggestions);
   renderApp();
   renderMarkers();
 }
@@ -736,11 +928,40 @@ function renderApp() {
       onLevelChange={changeLevel}
       onSettingsToggle={toggleSettings}
       onSettingsClose={closeSettings}
+      onEnabledToggle={toggleEnabled}
       onApiKeyDraftChange={changeApiKeyDraft}
       onApiKeySave={saveApiKey}
       onApiKeyClear={clearApiKey}
+      onDiagnosticCopy={copyDiagnostic}
     />
   );
+}
+
+async function toggleEnabled() {
+  const isEnabled = !overlayState.isEnabled;
+  overlayState = {
+    ...overlayState,
+    isEnabled,
+    activeSuggestion: null,
+    position: null,
+    isAnalyzing: false,
+    analysisMessage: null
+  };
+  await writeSetting(enabledStorageKey, isEnabled ? "true" : "false");
+
+  if (!isEnabled) {
+    suggestions = [];
+    renderApp();
+    renderMarkers();
+    return;
+  }
+
+  if (activeSurface) {
+    suggestions = readCachedSuggestions(activeSurface.getText());
+  }
+  renderApp();
+  renderMarkers();
+  queueAnalyze();
 }
 
 function toggleSettings() {
@@ -811,27 +1032,243 @@ async function saveApiKey() {
 async function clearApiKey() {
   openRouterApiKey = null;
   await removeSetting(apiKeyStorageKey);
+  suggestions = [];
   overlayState = {
     ...overlayState,
+    activeSuggestion: null,
+    position: null,
+    isAnalyzing: false,
     apiKeyDraft: "",
     hasApiKey: false,
-    apiKeyMessage: "Key cleared. Back to locally sourced nonsense."
+    apiKeyMessage: "Key cleared. Connect an OpenRouter key to analyze text.",
+    analysisMessage: null,
+    diagnosticText: null
   };
+  if (activeSurface) writeCachedSuggestions(activeSurface.getText(), suggestions);
   renderApp();
-  queueAnalyze();
+  renderMarkers();
 }
 
-async function readSettings(): Promise<{ level: CorporateLevel; openRouterApiKey: string | null }> {
-  const values = await readSetting([levelStorageKey, apiKeyStorageKey]);
+async function copyDiagnostic() {
+  if (!overlayState.diagnosticText) return;
+  try {
+    await navigator.clipboard.writeText(overlayState.diagnosticText);
+    overlayState = { ...overlayState, apiKeyMessage: "Diagnostic copied." };
+  } catch {
+    overlayState = { ...overlayState, apiKeyMessage: "Select the diagnostic text and copy it manually." };
+  }
+  renderApp();
+}
+
+async function analyzeWithOpenRouter(request: AnalyzeRequest, apiKey: string) {
+  const response = await fetch(openRouterApiUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": location.origin,
+      "X-OpenRouter-Title": "CEO Speak Extension"
+    },
+    body: JSON.stringify({
+      model: openRouterModel,
+      temperature: 0.35,
+      messages: [
+        {
+          role: "system",
+          content:
+            `You rewrite plain user text into corporate/consulting jargon for a joke/troll app. ${levelInstructions[request.level]} Return suggestions that transform ordinary wording into corporate speak. Make each message funny, punchy, and cooler than a normal grammar explanation while still explaining the change. Use absolute character offsets based on the provided windowStart. Every suggestion must replace a contiguous exact substring from the input, and original must exactly match that substring. Prefer simple phrase substitutions like "meet" -> "touch base", "discuss" -> "double click on", "later today" -> "by end of day", and "agree" -> "get alignment".`
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            windowStart: request.windowStart,
+            text: request.windowText
+          })
+        }
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "writing_suggestions",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              suggestions: {
+                type: "array",
+                maxItems: 12,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    id: { type: "string" },
+                    type: { type: "string", enum: ["corporate"] },
+                    start: { type: "integer" },
+                    end: { type: "integer" },
+                    original: { type: "string" },
+                    replacement: { type: "string" },
+                    message: { type: "string" },
+                    confidence: { type: "number", minimum: 0, maximum: 1 }
+                  },
+                  required: [
+                    "id",
+                    "type",
+                    "start",
+                    "end",
+                    "original",
+                    "replacement",
+                    "message",
+                    "confidence"
+                  ]
+                }
+              }
+            },
+            required: ["suggestions"]
+          }
+        }
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const errorBody = await readResponseBody(response);
+    throw new Error(`OpenRouter failed: ${response.status}${errorBody ? ` ${errorBody}` : ""}`);
+  }
+
+  const json = await response.json() as {
+    choices?: Array<{ message?: { content?: unknown } }>;
+  };
+  const content = json.choices?.[0]?.message?.content;
+  const parsedContent = typeof content === "string" ? JSON.parse(content) : content;
+  return AnalyzeResponseSchema.parse(parsedContent);
+}
+
+const levelInstructions = {
+  associate:
+    "Associate level: lightly professionalize the text. Prefer modest consulting phrasing, concise wording, and mild terms like align, sync, follow up, and next steps.",
+  manager:
+    "Manager level: noticeably corporate. Use consulting and workplace jargon such as circle back, touch base, alignment, unblock, socialize, parking lot, double click, and end of day when it fits.",
+  ceo:
+    "CEO level: aggressively executive and absurdly corporate while still grammatical. Lean into strategy, leverage, cross-functional alignment, north star, stakeholder buy-in, operationalize, unlock value, boil the ocean, and similar jargon."
+} satisfies Record<CorporateLevel, string>;
+
+async function readResponseBody(response: Response) {
+  try {
+    return (await response.text()).slice(0, 1000);
+  } catch {
+    return "";
+  }
+}
+
+function createDiagnosticText({
+  message,
+  startedAt,
+  text,
+  request,
+  networkDiagnostics
+}: {
+  message: string;
+  startedAt: string;
+  text: string;
+  request: ReturnType<typeof extractFocusedWindow> & { level: CorporateLevel; openRouterApiKey: string };
+  networkDiagnostics: string[];
+}) {
+  return [
+    "CEO Speak diagnostic",
+    `time: ${startedAt}`,
+    `url: ${openRouterApiUrl}`,
+    `model: ${openRouterModel}`,
+    `page: ${location.href}`,
+    `error: ${message}`,
+    `errorKind: ${message === "Failed to fetch" ? "network-or-extension-permission" : "http-or-parse"}`,
+    `hasApiKey: ${Boolean(openRouterApiKey)}`,
+    `level: ${request.level}`,
+    `fullTextLength: ${text.length}`,
+    `windowStart: ${request.windowStart}`,
+    `windowTextLength: ${request.windowText.length}`,
+    `cursorOffset: ${request.cursorOffset}`,
+    `windowTextPreview: ${JSON.stringify(request.windowText.slice(0, 240))}`,
+    "",
+    "Network probes",
+    ...networkDiagnostics
+  ].join("\n");
+}
+
+async function collectNetworkDiagnostics() {
+  const manifest = getManifestDiagnostics();
+  const probes = await Promise.all([
+    probeUrl("https://openrouter.ai/api/v1/models"),
+    probeUrl(openRouterApiUrl, {
+      method: "OPTIONS"
+    })
+  ]);
+
+  return [
+    `navigator.onLine: ${navigator.onLine}`,
+    `secureContext: ${window.isSecureContext}`,
+    ...manifest,
+    `likelyCause: ${getLikelyNetworkCause(probes)}`,
+    ...probes
+  ];
+}
+
+function getManifestDiagnostics() {
+  try {
+    const manifest = chrome.runtime.getManifest();
+    return [
+      `extension.id: ${chrome.runtime.id}`,
+      `manifest.version: ${manifest.version}`,
+      `manifest.host_permissions: ${JSON.stringify(manifest.host_permissions ?? [])}`,
+      `manifest.permissions: ${JSON.stringify(manifest.permissions ?? [])}`
+    ];
+  } catch (error) {
+    return [`manifest.readError: ${error instanceof Error ? error.message : String(error)}`];
+  }
+}
+
+async function probeUrl(url: string, init?: RequestInit) {
+  const startedAt = performance.now();
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      ...init
+    });
+    const body = await readResponseBody(response);
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    return `${url}: status=${response.status} ok=${response.ok} elapsedMs=${elapsedMs} body=${JSON.stringify(body.slice(0, 300))}`;
+  } catch (error) {
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    return `${url}: error=${error instanceof Error ? `${error.name}: ${error.message}` : String(error)} elapsedMs=${elapsedMs}`;
+  }
+}
+
+function getLikelyNetworkCause(probes: string[]) {
+  const modelProbe = probes.find((probe) => probe.includes("/models"));
+  if (modelProbe?.includes("status=200")) {
+    return "OpenRouter is reachable; check API key/model/request details.";
+  }
+
+  if (probes.every((probe) => probe.includes("Failed to fetch"))) {
+    return "OpenRouter is not reachable from the extension. Check host permissions, network, or browser blocking.";
+  }
+
+  return "Unknown network failure; inspect probe statuses below.";
+}
+
+async function readSettings(): Promise<{ level: CorporateLevel; openRouterApiKey: string | null; isEnabled: boolean }> {
+  const values = await readSetting([levelStorageKey, apiKeyStorageKey, enabledStorageKey]);
   const levelValue = values[levelStorageKey];
   const keyValue = values[apiKeyStorageKey];
+  const enabledValue = values[enabledStorageKey];
 
   return {
     level:
       levelValue === "associate" || levelValue === "manager" || levelValue === "ceo"
         ? levelValue
         : "manager",
-    openRouterApiKey: typeof keyValue === "string" && keyValue.trim() ? keyValue : null
+    openRouterApiKey: typeof keyValue === "string" && keyValue.trim() ? keyValue : null,
+    isEnabled: enabledValue === "false" ? false : true
   };
 }
 
@@ -890,6 +1327,81 @@ function writeCachedSuggestions(text: string, nextSuggestions: Suggestion[]) {
 
 function keepSuggestionsMatchingText(text: string, source: Suggestion[]) {
   return source.filter((suggestion) => text.slice(suggestion.start, suggestion.end) === suggestion.original);
+}
+
+function reconcileAnalyzeResponse(request: AnalyzeRequest, response: AnalyzeResponse): AnalyzeResponse {
+  const windowEnd = request.windowStart + request.windowText.length;
+  const repaired = response.suggestions.flatMap((suggestion) => {
+    if (suggestion.start >= request.windowStart && suggestion.end <= windowEnd) {
+      const original = request.windowText.slice(
+        suggestion.start - request.windowStart,
+        suggestion.end - request.windowStart
+      );
+      if (original === suggestion.original) return [suggestion];
+    }
+
+    const index = findOriginalInWindow(request.windowText, suggestion.original);
+    if (index === -1) return [];
+
+    const original = request.windowText.slice(index, index + suggestion.original.length);
+    return [
+      {
+        ...suggestion,
+        start: request.windowStart + index,
+        end: request.windowStart + index + original.length,
+        original
+      }
+    ];
+  });
+
+  return {
+    suggestions: repaired
+      .filter((suggestion) => {
+        if (suggestion.start < request.windowStart || suggestion.end > windowEnd) return false;
+        const original = request.windowText.slice(
+          suggestion.start - request.windowStart,
+          suggestion.end - request.windowStart
+        );
+        return original === suggestion.original;
+      })
+      .sort((a, b) => a.start - b.start)
+      .slice(0, 12)
+  };
+}
+
+function findOriginalInWindow(windowText: string, original: string) {
+  const directIndex = windowText.indexOf(original);
+  if (directIndex !== -1) return directIndex;
+
+  const lowerIndex = windowText.toLowerCase().indexOf(original.toLowerCase());
+  if (lowerIndex !== -1) return lowerIndex;
+
+  const normalizedWindow = createNormalizedSearchIndex(windowText);
+  const normalizedOriginal = normalizeSearchText(original);
+  const normalizedIndex = normalizedWindow.text.indexOf(normalizedOriginal);
+  if (normalizedIndex === -1) return -1;
+  return normalizedWindow.indexMap[normalizedIndex] ?? -1;
+}
+
+function createNormalizedSearchIndex(value: string) {
+  let text = "";
+  const indexMap: number[] = [];
+
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    const normalized = normalizeSearchText(char);
+    if (!normalized) continue;
+    text += normalized;
+    for (let offset = 0; offset < normalized.length; offset += 1) {
+      indexMap.push(index);
+    }
+  }
+
+  return { text, indexMap };
+}
+
+function normalizeSearchText(value: string) {
+  return value.replace(/\s+/g, " ").replace(/\u00a0/g, " ").toLowerCase();
 }
 
 function mergeSuggestions(text: string, current: Suggestion[], incoming: Suggestion[]) {

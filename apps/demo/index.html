@@ -3,18 +3,172 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Text Intelligence Demo</title>
+    <meta
+      name="description"
+      content="Consultify turns normal writing into billable, stakeholder-aligned consulting fog. Free Chrome extension. Bring your own API key."
+    />
+    <title>Consultify | Make It Sound Expensive</title>
     <script type="module" src="/src/main.ts"></script>
   </head>
   <body>
-    <main class="shell">
-      <section class="editor-panel">
-        <div class="heading">
-          <p>Chrome extension demo target</p>
-          <h1>Writing field</h1>
+    <main class="site-shell">
+      <header class="nav" aria-label="Primary navigation">
+        <a class="brand" href="#top" aria-label="Consultify home">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>Consultify</span>
+        </a>
+        <nav class="nav-links" aria-label="Page sections">
+          <a href="#proof">Proof</a>
+          <a href="#demo">Demo</a>
+          <a href="#privacy">Privacy</a>
+        </nav>
+        <a class="nav-cta" href="#install">Add to Chrome</a>
+      </header>
+
+      <section class="hero" id="top">
+        <div class="hero-copy">
+          <p class="eyebrow">Chrome extension / zero servers / maximum opacity</p>
+          <h1>Make It Sound Expensive.</h1>
+          <p class="hero-lede">
+            Turn normal sentences into billable, stakeholder-aligned nonsense
+            before the meeting invite even lands.
+          </p>
+          <div class="hero-actions" aria-label="Primary actions">
+            <a class="button button-primary" href="#install">Add to Chrome</a>
+            <a class="button button-secondary" href="#privacy">Bring your own API key</a>
+          </div>
+          <div class="hero-note">
+            <span>Free forever</span>
+            <span>No account</span>
+            <span>100% client-side</span>
+          </div>
         </div>
-        <label for="writing-box">Draft</label>
-        <textarea id="writing-box" spellcheck="false">We should meet later today and talk about the plan before we agree on next steps.</textarea>
+
+        <div class="hero-visual" aria-label="Money pyramid product illustration">
+          <img
+            src="/assets/consultify-pyramid.png"
+            alt="A satirical consulting pyramid made of dollar bills, memo cards, sticky notes, and a Consultify browser extension popover."
+          />
+        </div>
+      </section>
+
+      <section class="testimonials" id="proof" aria-labelledby="proof-title">
+        <div class="section-kicker">
+          <p>Early alignment signals</p>
+          <h2 id="proof-title">Loved by people who bill by the paragraph.</h2>
+        </div>
+        <div class="quote-wall">
+          <article class="quote-card quote-card-large">
+            <p>“My email now has 4 billable layers.”</p>
+            <span>Principal, Calendar Forwarding</span>
+          </article>
+          <article class="quote-card">
+            <p>“Finally, a tool that says nothing beautifully.”</p>
+            <span>VP, Strategic Fog</span>
+          </article>
+          <article class="quote-card">
+            <p>“Our Q3 narrative has never been less accountable.”</p>
+            <span>Director, Outcomes Adjacent</span>
+          </article>
+          <article class="quote-card">
+            <p>“It made my apology sound like a roadmap.”</p>
+            <span>Fractional Transformation Lead</span>
+          </article>
+          <article class="quote-card quote-card-dark">
+            <p>“I pasted one sentence and got a steering committee.”</p>
+            <span>Partner, Slides & Sons</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="demo-section" id="demo" aria-labelledby="demo-title">
+        <div class="demo-heading">
+          <p class="eyebrow">Before / after</p>
+          <h2 id="demo-title">Plain English goes in. Procurement theater comes out.</h2>
+        </div>
+        <div class="rewrite-panel">
+          <article class="editor-card">
+            <div class="editor-bar">
+              <span></span><span></span><span></span>
+              <strong>draft.txt</strong>
+            </div>
+            <p class="editor-label">Before</p>
+            <p class="plain-text">We should fix this.</p>
+            <div class="underlines" aria-hidden="true">
+              <span></span>
+              <span></span>
+            </div>
+          </article>
+          <article class="editor-card editor-card-after">
+            <div class="editor-bar">
+              <span></span><span></span><span></span>
+              <strong>consulting-mode.txt</strong>
+            </div>
+            <p class="editor-label">After Consultify</p>
+            <p class="consulting-text">
+              We recommend a phased remediation initiative to unlock operational
+              confidence across the impacted workstream.
+            </p>
+            <div class="suggestion-bubble">More executive fog?</div>
+          </article>
+        </div>
+      </section>
+
+      <section class="features" aria-labelledby="features-title">
+        <div class="section-kicker">
+          <p>Core competencies</p>
+          <h2 id="features-title">Three ways to manufacture confidence.</h2>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <span class="feature-icon pyramid-icon" aria-hidden="true"></span>
+            <h3>Jargon Injection</h3>
+            <p>Turns “do it soon” into a multi-phase enablement opportunity.</p>
+          </article>
+          <article>
+            <span class="feature-icon deck-icon" aria-hidden="true"></span>
+            <h3>Deck Voice</h3>
+            <p>Every sentence arrives pre-approved by an invisible slide master.</p>
+          </article>
+          <article>
+            <span class="feature-icon fog-icon" aria-hidden="true"></span>
+            <h3>Executive Fog</h3>
+            <p>Softens accountability until it can safely pass through finance.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="privacy" id="privacy" aria-labelledby="privacy-title">
+        <div>
+          <p class="eyebrow">The anti-SaaS SaaS</p>
+          <h2 id="privacy-title">No server. No account. No invoice.</h2>
+          <p>
+            Consultify runs in your browser and uses the API key you provide.
+            Your drafts, keys, and high-margin nonsense stay with you.
+          </p>
+        </div>
+        <div class="settings-card" aria-label="Extension settings preview">
+          <div class="settings-top">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <strong>consultify</strong>
+            <span class="gear" aria-hidden="true">+</span>
+          </div>
+          <label for="fake-key">OpenAI API key</label>
+          <div class="fake-input" id="fake-key">••••••••••••••••••••••••</div>
+          <div class="toggle-row">
+            <span>Enable Corporate Mode</span>
+            <span class="toggle" aria-hidden="true"></span>
+          </div>
+          <p>No server sees this. Tragic for our revenue model.</p>
+        </div>
+      </section>
+
+      <section class="final-cta" id="install" aria-labelledby="install-title">
+        <p class="eyebrow">Add the extension</p>
+        <h2 id="install-title">Stop Writing. Start Billing.</h2>
+        <a class="button button-primary" href="#" aria-label="Add Consultify to Chrome">
+          Add to Chrome
+        </a>
       </section>
     </main>
   </body>
